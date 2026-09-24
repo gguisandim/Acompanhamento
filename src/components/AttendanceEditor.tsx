@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { AttendanceStatus } from "@/lib/types";
-import { MODULES, SLOTS, attendanceFrequency, percentLabel } from "@/lib/progress";
+import { MODULES, SLOTS, attendanceMetrics, percentLabel } from "@/lib/progress";
 
 type Student = {
   id: string;
@@ -27,7 +27,8 @@ export default function AttendanceEditor({
   students: Student[];
   canEdit: boolean;
 }) {
-  const [module, setModule] = useState(1);
+  const [view, setView] = useState<"overview" | number>("overview");
+  const [matrixMode, setMatrixMode] = useState<"frequency" | "progress">("frequency");
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus | "">>(() => {
     const initial: Record<string, AttendanceStatus | ""> = {};
     for (const student of students) {
@@ -54,23 +55,28 @@ export default function AttendanceEditor({
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
 
-  const overallFrequency = useMemo(() => {
-    const result: Record<string, number | null> = {};
+  const overallMetrics = useMemo(() => {
+    const result: Record<string, ReturnType<typeof attendanceMetrics>> = {};
     for (const student of students) {
       const statuses = MODULES.flatMap((m) =>
         SLOTS.map((slot) => attendance[cellKey(student.id, m, slot)] || null)
       ) as Array<AttendanceStatus | null>;
-      result[student.id] = attendanceFrequency(statuses);
+      result[student.id] = attendanceMetrics(statuses, MODULES.length * SLOTS.length);
     }
     return result;
   }, [attendance, students]);
+
+  const moduleSummaries = useMemo(() => MODULES.map((item) => {
+    const values = students.flatMap((student) => SLOTS.map((slot) => attendance[cellKey(student.id, item, slot)] || null));
+    return { module: item, metrics: attendanceMetrics(values, students.length * SLOTS.length) };
+  }), [attendance, students]);
 
   function markSlot(slot: number, status: AttendanceStatus) {
     if (!canEdit) return;
     setAttendance((current) => {
       const next = { ...current };
       for (const student of students) {
-        next[cellKey(student.id, module, slot)] = status;
+        if (typeof view === "number") next[cellKey(student.id, view, slot)] = status;
       }
       return next;
     });
@@ -120,13 +126,14 @@ export default function AttendanceEditor({
 
   return (
     <section>
-      <div className="module-tabs" role="tablist" aria-label="Módulos">
+      <div className="module-tabs" role="tablist" aria-label="Acompanhamento da turma">
+        <button type="button" className={view === "overview" ? "module-tab active" : "module-tab"} onClick={() => setView("overview")}>Visão geral</button>
         {MODULES.map((item) => (
           <button
             key={item}
             type="button"
-            className={item === module ? "module-tab active" : "module-tab"}
-            onClick={() => setModule(item)}
+            className={item === view ? "module-tab active" : "module-tab"}
+            onClick={() => setView(item)}
           >
             Módulo {item}
           </button>
@@ -136,6 +143,33 @@ export default function AttendanceEditor({
         </Link>
       </div>
 
+      {view === "overview" ? (
+        <div className="class-overview-content">
+          <div className="class-overview-charts">
+            <article className="chart-card"><div className="chart-heading"><h2>Frequência por módulo</h2><p>Média consolidada da turma</p></div><div className="bar-chart">{moduleSummaries.map(({ module: item, metrics }) => <div className="bar-row" key={item}><span>Mód. {item}</span><div className="bar-track"><i style={{ width: `${metrics.frequency ?? 0}%` }} /></div><strong>{percentLabel(metrics.frequency)}</strong></div>)}</div></article>
+            <article className="chart-card"><div className="chart-heading"><h2>Progresso por módulo</h2><p>Preenchimento do acompanhamento</p></div><div className="bar-chart tone-blue">{moduleSummaries.map(({ module: item, metrics }) => <div className="bar-row" key={item}><span>Mód. {item}</span><div className="bar-track"><i style={{ width: `${metrics.progress}%` }} /></div><strong>{percentLabel(metrics.progress)}</strong></div>)}</div></article>
+          </div>
+          <div className="matrix-heading"><div><h2>Matriz cursista × módulo</h2><p>Use o tooltip para ver frequência, preenchimento, P, F e N/A.</p></div><div className="chart-toggle matrix-toggle"><button type="button" className={matrixMode === "frequency" ? "active" : ""} onClick={() => setMatrixMode("frequency")}>Frequência</button><button type="button" className={matrixMode === "progress" ? "active" : ""} onClick={() => setMatrixMode("progress")}>Progresso</button></div></div>
+        <div className="table-wrap">
+          <table className="attendance-table progress-matrix">
+            <thead><tr><th className="sticky-col index">Nº</th><th className="sticky-col name">Cursista</th>{MODULES.map((item) => <th key={item}>Mód. {item}</th>)}<th>Geral</th></tr></thead>
+            <tbody>
+              {students.map((student) => (
+                <tr key={student.id}>
+                  <td className="sticky-col index">{student.position}</td>
+                  <td className="sticky-col name"><strong>{student.name}</strong><small>{student.municipality || "Município não informado"}</small></td>
+                  {MODULES.map((item) => {
+                    const metrics = attendanceMetrics(SLOTS.map((slot) => attendance[cellKey(student.id, item, slot)] || null), SLOTS.length);
+                    return <td key={item} title={`Módulo ${item}\nFrequência: ${percentLabel(metrics.frequency)}\nPreenchimento: ${metrics.filled}/${metrics.expected}\nPresentes: ${metrics.present}\nFaltas: ${metrics.absent}\nN/A: ${metrics.notApplicable}`}><strong>{percentLabel(matrixMode === "frequency" ? metrics.frequency : metrics.progress)}</strong><small>{matrixMode === "frequency" ? `${percentLabel(metrics.progress)} preenchido` : `${percentLabel(metrics.frequency)} frequência`}</small></td>;
+                  })}
+                  <td><strong>{percentLabel(matrixMode === "frequency" ? overallMetrics[student.id].frequency : overallMetrics[student.id].progress)}</strong><small>{matrixMode === "frequency" ? `${percentLabel(overallMetrics[student.id].progress)} preenchido` : `${percentLabel(overallMetrics[student.id].frequency)} frequência`}</small></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        </div>
+      ) : (
       <div className="table-wrap">
         <table className="attendance-table">
           <thead>
@@ -159,6 +193,7 @@ export default function AttendanceEditor({
                 </th>
               ))}
               <th>Freq. módulo</th>
+              <th>Progresso</th>
               <th>Freq. geral</th>
               <th>Trabalho final</th>
             </tr>
@@ -166,9 +201,9 @@ export default function AttendanceEditor({
           <tbody>
             {students.map((student) => {
               const moduleStatuses = SLOTS.map(
-                (slot) => attendance[cellKey(student.id, module, slot)] || null
+                (slot) => attendance[cellKey(student.id, view, slot)] || null
               ) as Array<AttendanceStatus | null>;
-              const moduleFrequency = attendanceFrequency(moduleStatuses);
+              const moduleMetrics = attendanceMetrics(moduleStatuses, SLOTS.length);
 
               return (
                 <tr key={student.id}>
@@ -176,7 +211,7 @@ export default function AttendanceEditor({
                   <td className="sticky-col name"><strong>{student.name}</strong></td>
                   <td>{student.municipality || "—"}</td>
                   {SLOTS.map((slot) => {
-                    const key = cellKey(student.id, module, slot);
+                    const key = cellKey(student.id, view, slot);
                     return (
                       <td key={slot}>
                         <select
@@ -198,8 +233,9 @@ export default function AttendanceEditor({
                       </td>
                     );
                   })}
-                  <td><span className="frequency">{percentLabel(moduleFrequency)}</span></td>
-                  <td><span className="frequency">{percentLabel(overallFrequency[student.id])}</span></td>
+                  <td><span className="frequency">{percentLabel(moduleMetrics.frequency)}</span></td>
+                  <td><span className="frequency">{percentLabel(moduleMetrics.progress)}</span></td>
+                  <td><span className="frequency">{percentLabel(overallMetrics[student.id].frequency)}</span></td>
                   <td>
                     <select
                       className="work-select"
@@ -220,6 +256,7 @@ export default function AttendanceEditor({
           </tbody>
         </table>
       </div>
+      )}
 
       <div className="save-bar">
         <div>

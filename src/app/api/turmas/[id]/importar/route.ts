@@ -28,6 +28,15 @@ function normalizeFinalWork(value: string): boolean | null {
   return null;
 }
 
+function normalizeIdentity(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLocaleLowerCase("pt-BR");
+}
+
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> }
@@ -101,29 +110,136 @@ export async function POST(
   }
 
   const sql = db();
-  await sql.begin(async (tx) => {
-    await tx`DELETE FROM students WHERE classroom_id = ${id}`;
+  const existing = await sql`
+    SELECT id, position, name, municipality
+    FROM students
+    WHERE classroom_id = ${id}
+    ORDER BY position
+  `;
 
+  const importedKeys = new Map<string, number>();
+  const conflicts: string[] = [];
+  for (const item of imported) {
+    const key = `${normalizeIdentity(item.name)}|${normalizeIdentity(item.municipality ?? "")}`;
+    if (importedKeys.has(key)) conflicts.push(`Linhas ${importedKeys.get(key)} e ${item.position}: cursista duplicado (${item.name}).`);
+    importedKeys.set(key, item.position);
+  }
+
+  const matchByItem = new Map<number, (typeof existing)[number]>();
+  const matchedIds = new Set<string>();
+  for (const item of imported) {
+    const sameName = existing.filter((student) => normalizeIdentity(String(student.name)) === normalizeIdentity(item.name));
+    let match = sameName.length === 1 ? sameName[0] : undefined;
+    if (sameName.length > 1) {
+      const sameMunicipality = sameName.filter((student) =>
+        normalizeIdentity(student.municipality == null ? "" : String(student.municipality)) === normalizeIdentity(item.municipality ?? "")
+      );
+      if (sameMunicipality.length === 1) match = sameMunicipality[0];
+      else conflicts.push(`Linha ${item.position}: há mais de um cadastro compatível com ${item.name}; revise o município.`);
+    }
+    if (match) {
+      const matchId = String(match.id);
+      if (matchedIds.has(matchId)) conflicts.push(`Linha ${item.position}: ${item.name} corresponde a um cursista já associado nesta importação.`);
+      matchedIds.add(matchId);
+      matchByItem.set(item.position, match);
+    }
+  }
+
+  const occupiedPositions = new Map(
+    existing.map((student) => [Number(student.position), String(student.name)])
+  );
+  for (const item of imported) {
+    if (!matchByItem.has(item.position) && occupiedPositions.has(item.position)) {
+      conflicts.push(`Linha ${item.position}: a posição já pertence a ${occupiedPositions.get(item.position)}. Nenhum cadastro foi substituído.`);
+    }
+  }
+
+  if (conflicts.length) {
+    return NextResponse.json({
+      error: "A importação foi bloqueada para preservar o acompanhamento existente.",
+      conflicts
+    }, { status: 409 });
+  }
+
+  const resultSheet = workbook.getWorksheet("2 - Resultado Final");
+  const noteParts: string[] = [];
+  if (resultSheet) {
+    for (let row = 40; row <= 45; row++) {
+      const value = text(resultSheet.getCell(row, 1).value);
+      if (value && !/anota[cç][oõ]es/i.test(value)) noteParts.push(value);
+    }
+  }
+  const importedNotes = noteParts.join("\n").trim() || null;
+
+  let inserted = 0;
+  let updated = 0;
+  let attendanceUpserted = 0;
+  await sql.begin(async (tx) => {
     for (const item of imported) {
-      const [student] = await tx`
-        INSERT INTO students (classroom_id, position, name, municipality, final_work_delivered)
-        VALUES (${id}, ${item.position}, ${item.name}, ${item.municipality}, ${item.finalWork})
-        RETURNING id
-      `;
+      const matched = matchByItem.get(item.position);
+      let studentId: string;
+      if (matched) {
+        studentId = String(matched.id);
+        if (item.finalWork === null) {
+          await tx`UPDATE students SET name = ${item.name}, municipality = ${item.municipality}, updated_at = NOW() WHERE id = ${studentId} AND classroom_id = ${id}`;
+        } else {
+          await tx`
+            UPDATE students
+            SET name = ${item.name}, municipality = ${item.municipality},
+                final_work_delivered = ${item.finalWork}, final_work_updated_at = NOW(),
+                final_work_updated_by = ${user.id}, updated_at = NOW()
+            WHERE id = ${studentId} AND classroom_id = ${id}
+          `;
+        }
+        updated += 1;
+      } else {
+        const [student] = await tx`
+          INSERT INTO students (
+            classroom_id, position, name, municipality, final_work_delivered,
+            final_work_updated_at, final_work_updated_by
+          )
+          VALUES (
+            ${id}, ${item.position}, ${item.name}, ${item.municipality}, ${item.finalWork},
+            ${item.finalWork === null ? null : new Date()}, ${item.finalWork === null ? null : user.id}
+          )
+          RETURNING id
+        `;
+        studentId = String(student.id);
+        inserted += 1;
+      }
 
       if (item.attendance.length) {
         const rows = item.attendance.map((attendance) => ({
-          student_id: student.id,
+          student_id: studentId,
           module: attendance.module,
           slot: attendance.slot,
           status: attendance.status
         }));
         await tx`
           INSERT INTO attendance ${tx(rows, "student_id", "module", "slot", "status")}
+          ON CONFLICT (student_id, module, slot)
+          DO UPDATE SET status = EXCLUDED.status, updated_at = NOW()
         `;
+        attendanceUpserted += rows.length;
       }
+    }
+
+    if (importedNotes) {
+      await tx`
+        UPDATE classrooms
+        SET final_notes = ${importedNotes}, final_notes_updated_at = NOW(),
+            final_notes_updated_by = ${user.id}, updated_at = NOW()
+        WHERE id = ${id}
+      `;
     }
   });
 
-  return NextResponse.json({ ok: true, students: imported.length });
+  return NextResponse.json({
+    ok: true,
+    students: imported.length,
+    inserted,
+    updated,
+    attendanceUpserted,
+    preservedStudents: existing.length - matchedIds.size
+  });
 }

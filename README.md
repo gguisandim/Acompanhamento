@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # Acompanhamento 2026
 
 Aplicação inicial para centralizar as planilhas de acompanhamento de cursistas do curso 2026 na Região Norte.
@@ -11,9 +10,10 @@ Aplicação inicial para centralizar as planilhas de acompanhamento de cursistas
 - 6 módulos, com 6 registros de presença em cada módulo.
 - Presenças: `P`, `F`, `N/A` ou vazio.
 - Frequência = `P / (P + F)`. `N/A` e vazio são ignorados.
+- Progresso = registros `P`, `F` ou `N/A` preenchidos / registros esperados. Vazio não conta.
 - Frequência mínima: 75%.
 - Trabalho final: `Entregou`, `Não entregou` ou `Pendente`.
-- Certificação automática: frequência geral >= 75% e trabalho final entregue.
+- A situação final sugerida considera progresso completo, frequência geral e trabalho final; a confirmação humana pode prevalecer.
 - Cursistas são importados previamente; professor não cria/remover cursistas.
 
 ## Perfis
@@ -39,16 +39,16 @@ Ele lê a aba `1 - Acompanhamento`:
 - colunas D:AM: 36 registros de presença, 6 por módulo;
 - coluna AN: trabalho final.
 
-A importação é por **substituição da turma**. Isso é intencional nesta primeira versão para permitir migrar cada planilha atual sem misturar registros antigos. A tela apresenta confirmação antes do envio.
+A importação é **conservadora**: concilia cursistas por nome e município, insere novos registros e atualiza apenas células explícitas. Cursistas ausentes e presenças em células vazias não são excluídos. Ambiguidades são bloqueadas para revisão.
 
 ## Exportação
 
 Cada turma pode ser exportada para `.xlsx`, com:
 
-1. `1 - Acompanhamento`: estrutura próxima ao modelo original, incluindo as 36 presenças.
-2. `2 - Resultado Final`: resultado dos módulos, frequência geral, trabalho final e certificação.
+1. `1 - Acompanhamento`: estrutura do modelo oficial, incluindo as 36 presenças.
+2. `2 - Resultado Final`: frequência e progresso por módulo, frequência e progresso geral, trabalho final, situação e observações.
 
-O resultado por módulo é derivado da frequência daquele módulo: >= 75% = `APROVADO`. A regra final de certificação usa a frequência geral e o trabalho final.
+Não existe aprovação ou reprovação por módulo. Os módulos mostram apenas frequência, progresso e estado de preenchimento.
 
 ## Stack
 
@@ -91,6 +91,14 @@ Se aparecer `DATABASE_URL não definida`, confira se o arquivo `.env` ou `.env.l
 npm run dev
 ```
 
+Validações disponíveis:
+
+```bash
+npm run typecheck
+npm run build
+npm run test:smoke
+```
+
 Acesse `http://localhost:3000`.
 
 ### Dados de demonstração
@@ -130,10 +138,6 @@ A estrutura já permite adicionar, sem alterar a lógica principal:
 
 - importação em lote de várias turmas;
 - painel comparativo entre estados;
-- anotações da turma;
-- trilha de auditoria de alterações;
+- trilha de auditoria detalhada de alterações;
 - relatórios PDF;
 - exportação geral de todas as turmas.
-=======
-# Acompanhamento
->>>>>>> b1f1573a054853f6e466813a5a69300d3fcd8b35

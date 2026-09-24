@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
+    "test:smoke": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/smoke-test.mjs",
     "db:migrate": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/migrate.mjs",
     "db:init": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/init-db.mjs",
     "db:demo": "node --env-file-if-exists=.env --env-file-if-exists=.env.local scripts/init-db.mjs --demo"

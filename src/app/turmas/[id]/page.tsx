@@ -47,8 +47,10 @@ export default async function ClassroomPage({
       <section className="classroom-overview" aria-label="Indicadores da turma">
         <article><span>Cursistas</span><strong>{overview.studentCount}</strong></article>
         <article><span>Frequência média</span><strong>{percent(overview.averageFrequency)}</strong></article>
-        <article><span>Aptos</span><strong>{overview.aptCount}</strong></article>
+        <article><span>Progresso</span><strong>{percent(overview.averageProgress)}</strong></article>
         <article><span>Abaixo de 75%</span><strong>{overview.belowMinimum}</strong></article>
+        <article><span>Trabalhos pendentes</span><strong>{overview.pendingFinalWork}</strong></article>
+        <article><span>Aptos à certificação</span><strong>{overview.aptCount}</strong></article>
       </section>
 
       <AttendanceEditor

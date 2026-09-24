@@ -12,6 +12,10 @@ CREATE TABLE IF NOT EXISTS classrooms (
   number SMALLINT NOT NULL CHECK (number BETWEEN 1 AND 6),
   name TEXT NOT NULL,
   notes TEXT,
+  final_notes TEXT,
+  final_notes_updated_at TIMESTAMPTZ,
+  final_notes_updated_by UUID,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (state_id, number)
 );
@@ -38,6 +42,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_users_active_professor_classroom
   ON users(classroom_id)
   WHERE active = TRUE AND role = 'PROFESSOR' AND classroom_id IS NOT NULL;
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'classrooms_final_notes_updated_by_fkey'
+  ) THEN
+    ALTER TABLE classrooms
+      ADD CONSTRAINT classrooms_final_notes_updated_by_fkey
+      FOREIGN KEY (final_notes_updated_by) REFERENCES users(id) ON DELETE SET NULL;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS students (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   classroom_id UUID NOT NULL REFERENCES classrooms(id) ON DELETE CASCADE,
@@ -45,6 +60,20 @@ CREATE TABLE IF NOT EXISTS students (
   name TEXT NOT NULL,
   municipality TEXT,
   final_work_delivered BOOLEAN,
+  final_work_updated_at TIMESTAMPTZ,
+  final_work_updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  final_status TEXT CHECK (final_status IS NULL OR final_status IN (
+    'IN_PROGRESS',
+    'READY_FOR_CERTIFICATION',
+    'INSUFFICIENT_ATTENDANCE',
+    'FINAL_WORK_PENDING',
+    'NOT_COMPLETED',
+    'PENDING_REVIEW'
+  )),
+  final_observations TEXT,
+  final_review_updated_at TIMESTAMPTZ,
+  final_review_updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (classroom_id, position)
 );
@@ -60,6 +89,8 @@ CREATE TABLE IF NOT EXISTS attendance (
 
 CREATE INDEX IF NOT EXISTS idx_classrooms_state ON classrooms(state_id);
 CREATE INDEX IF NOT EXISTS idx_students_classroom ON students(classroom_id);
+CREATE INDEX IF NOT EXISTS idx_students_classroom_municipality ON students(classroom_id, municipality);
+CREATE INDEX IF NOT EXISTS idx_students_final_status ON students(final_status);
 CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance(student_id);
 CREATE INDEX IF NOT EXISTS idx_attendance_module_student ON attendance(module, student_id);
 CREATE INDEX IF NOT EXISTS idx_users_state ON users(state_id);

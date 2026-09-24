@@ -13,7 +13,7 @@ export default function ImportRoster({ classroomId }: { classroomId: string }) {
     event.preventDefault();
     if (!file) return;
 
-    if (!window.confirm("A importação substituirá a lista atual e as presenças desta turma. Continuar?")) {
+    if (!window.confirm("Importar os dados válidos da planilha e preservar os registros que ela não altera?")) {
       return;
     }
 
@@ -32,11 +32,12 @@ export default function ImportRoster({ classroomId }: { classroomId: string }) {
     setLoading(false);
 
     if (!response.ok) {
-      setMessage(data.error ?? "Falha na importação.");
+      const details = Array.isArray(data.conflicts) ? ` ${data.conflicts.join(" ")}` : "";
+      setMessage(`${data.error ?? "Falha na importação."}${details}`);
       return;
     }
 
-    setMessage(`${data.students} cursista(s) importado(s).`);
+    setMessage(`${data.students} cursista(s) processado(s): ${data.inserted} novo(s), ${data.updated} atualizado(s). Registros ausentes e células vazias foram preservados.`);
     router.refresh();
   }
 
@@ -56,15 +57,16 @@ export default function ImportRoster({ classroomId }: { classroomId: string }) {
         />
       </label>
 
-      <div className="alert alert-warning">
-        Esta primeira versão usa importação por substituição: cursistas e presenças já
-        existentes nesta turma serão removidos e recriados a partir do arquivo.
+      <div className="alert">
+        Importação conservadora: cursistas são conciliados por nome e município. Células
+        válidas atualizam o acompanhamento; vazios não apagam presenças, e cursistas ausentes
+        no arquivo permanecem cadastrados. Conflitos são bloqueados para revisão.
       </div>
 
       {message ? <div className="alert">{message}</div> : null}
 
       <button className="button button-primary" disabled={!file || loading} type="submit">
-        {loading ? "Importando..." : "Importar e substituir turma"}
+        {loading ? "Importando..." : "Importar com segurança"}
       </button>
     </form>
   );

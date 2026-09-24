@@ -91,7 +91,10 @@ export async function POST(
     for (const item of parsed.data.finalWork) {
       await tx`
         UPDATE students
-        SET final_work_delivered = ${item.delivered}
+        SET final_work_delivered = ${item.delivered},
+            final_work_updated_at = NOW(),
+            final_work_updated_by = ${user.id},
+            updated_at = NOW()
         WHERE id = ${item.studentId} AND classroom_id = ${id}
       `;
     }

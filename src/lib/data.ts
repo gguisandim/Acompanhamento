@@ -1,5 +1,5 @@
 import { db } from "./db";
-import type { AttendanceStatus, ClassroomScope, CurrentUser } from "./types";
+import type { AttendanceStatus, ClassroomScope, CurrentUser, FinalStatus } from "./types";
 
 export type ClassroomCard = {
   id: string;
@@ -129,6 +129,7 @@ export type ClassroomDetail = ClassroomScope & {
   name: string;
   number: number;
   notes: string | null;
+  finalNotes: string | null;
   state_code: string;
   state_name: string;
 };
@@ -136,7 +137,7 @@ export type ClassroomDetail = ClassroomScope & {
 export async function getClassroom(id: string): Promise<ClassroomDetail | null> {
   const sql = db();
   const [row] = await sql`
-    SELECT c.id, c.name, c.number, c.state_id, c.notes,
+    SELECT c.id, c.name, c.number, c.state_id, c.notes, c.final_notes,
            s.code AS state_code, s.name AS state_name
     FROM classrooms c
     JOIN states s ON s.id = c.state_id
@@ -151,6 +152,7 @@ export async function getClassroom(id: string): Promise<ClassroomDetail | null> 
     number: Number(row.number),
     state_id: String(row.state_id),
     notes: row.notes == null ? null : String(row.notes),
+    finalNotes: row.final_notes == null ? null : String(row.final_notes),
     state_code: String(row.state_code),
     state_name: String(row.state_name)
   };
@@ -159,8 +161,10 @@ export async function getClassroom(id: string): Promise<ClassroomDetail | null> 
 export type ClassroomOverview = {
   studentCount: number;
   averageFrequency: number | null;
+  averageProgress: number;
   aptCount: number;
   belowMinimum: number;
+  pendingFinalWork: number;
   professorName: string | null;
 };
 
@@ -168,25 +172,38 @@ export async function getClassroomOverview(classroomId: string): Promise<Classro
   const sql = db();
   const [row] = await sql`
     WITH student_frequency AS (
-      SELECT st.id, st.final_work_delivered,
+      SELECT st.id, st.final_work_delivered, st.final_status,
              COUNT(a.student_id) FILTER (WHERE a.status = 'P')::float AS presences,
-             COUNT(a.student_id) FILTER (WHERE a.status IN ('P', 'F'))::float AS considered
+             COUNT(a.student_id) FILTER (WHERE a.status IN ('P', 'F'))::float AS considered,
+             COUNT(a.student_id)::float AS filled
       FROM students st
       LEFT JOIN attendance a ON a.student_id = st.id
       WHERE st.classroom_id = ${classroomId}
-      GROUP BY st.id, st.final_work_delivered
+      GROUP BY st.id, st.final_work_delivered, st.final_status
+    ), student_status AS (
+      SELECT *,
+        CASE
+          WHEN final_status IS NOT NULL THEN final_status
+          WHEN filled < 36 THEN 'IN_PROGRESS'
+          WHEN considered = 0 THEN 'PENDING_REVIEW'
+          WHEN presences / considered < 0.75 THEN 'INSUFFICIENT_ATTENDANCE'
+          WHEN final_work_delivered IS NULL THEN 'FINAL_WORK_PENDING'
+          WHEN final_work_delivered = FALSE THEN 'NOT_COMPLETED'
+          ELSE 'READY_FOR_CERTIFICATION'
+        END AS effective_status
+      FROM student_frequency
     )
     SELECT
       COUNT(sf.id)::int AS student_count,
       AVG(CASE WHEN sf.considered > 0 THEN sf.presences / sf.considered END)::float AS average_frequency,
+      COALESCE(AVG(sf.filled / 36.0), 0)::float AS average_progress,
       COUNT(sf.id) FILTER (
-        WHERE sf.considered > 0
-          AND sf.presences / sf.considered >= 0.75
-          AND sf.final_work_delivered = TRUE
+        WHERE sf.effective_status = 'READY_FOR_CERTIFICATION'
       )::int AS apt_count,
       COUNT(sf.id) FILTER (
         WHERE sf.considered > 0 AND sf.presences / sf.considered < 0.75
       )::int AS below_minimum,
+      COUNT(sf.id) FILTER (WHERE sf.final_work_delivered IS NULL)::int AS pending_final_work,
       (
         SELECT u.name FROM users u
         WHERE u.classroom_id = ${classroomId}
@@ -194,14 +211,16 @@ export async function getClassroomOverview(classroomId: string): Promise<Classro
           AND u.active = TRUE
         LIMIT 1
       ) AS professor_name
-    FROM student_frequency sf
+    FROM student_status sf
   `;
 
   return {
     studentCount: Number(row?.student_count ?? 0),
     averageFrequency: row?.average_frequency == null ? null : Number(row.average_frequency),
+    averageProgress: Number(row?.average_progress ?? 0),
     aptCount: Number(row?.apt_count ?? 0),
     belowMinimum: Number(row?.below_minimum ?? 0),
+    pendingFinalWork: Number(row?.pending_final_work ?? 0),
     professorName: row?.professor_name == null ? null : String(row.professor_name)
   };
 }
@@ -212,13 +231,16 @@ export type StudentDetail = {
   name: string;
   municipality: string | null;
   finalWorkDelivered: boolean | null;
+  finalStatus: FinalStatus | null;
+  finalObservations: string | null;
   attendance: Record<string, AttendanceStatus>;
 };
 
 export async function getClassroomStudents(classroomId: string): Promise<StudentDetail[]> {
   const sql = db();
   const students = await sql`
-    SELECT id, position, name, municipality, final_work_delivered
+    SELECT id, position, name, municipality, final_work_delivered,
+           final_status, final_observations
     FROM students
     WHERE classroom_id = ${classroomId}
     ORDER BY position
@@ -246,6 +268,8 @@ export async function getClassroomStudents(classroomId: string): Promise<Student
     name: student.name,
     municipality: student.municipality,
     finalWorkDelivered: student.final_work_delivered,
+    finalStatus: student.final_status as FinalStatus | null,
+    finalObservations: student.final_observations == null ? null : String(student.final_observations),
     attendance: byStudent.get(student.id) ?? {}
   }));
 }

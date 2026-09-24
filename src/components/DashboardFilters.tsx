@@ -7,16 +7,19 @@ import type {
   DashboardFilters as FilterValues,
   DashboardStateOption
 } from "@/lib/dashboard";
+import { FINAL_STATUS_LABELS, type FinalStatus } from "@/lib/types";
 
 export default function DashboardFilters({
   filters,
   states,
   classrooms,
+  municipalities,
   canSelectState
 }: {
   filters: FilterValues;
   states: DashboardStateOption[];
   classrooms: DashboardClassroomOption[];
+  municipalities: string[];
   canSelectState: boolean;
 }) {
   const router = useRouter();
@@ -38,7 +41,14 @@ export default function DashboardFilters({
         </div>
         <Link href={`/dashboard?estado=${filters.stateCode}`} className="filter-clear">Limpar filtros</Link>
       </div>
-      <div className="filter-grid">
+      <div className="filter-grid dashboard-filter-grid">
+        <label>
+          Município
+          <select name="municipio" defaultValue={filters.municipality ?? ""}>
+            <option value="">Todos</option>
+            {municipalities.map((municipality) => <option key={municipality} value={municipality}>{municipality}</option>)}
+          </select>
+        </label>
         <label>
           Estado
           <select name="estado" defaultValue={filters.stateCode} disabled={!canSelectState}>
@@ -67,12 +77,10 @@ export default function DashboardFilters({
           </select>
         </label>
         <label>
-          Situação
+          Situação final
           <select name="situacao" defaultValue={filters.situation ?? ""}>
             <option value="">Todos</option>
-            <option value="apto">Apto para certificação</option>
-            <option value="nao-apto">Não apto</option>
-            <option value="abaixo-75">Abaixo de 75% de frequência</option>
+            {(Object.entries(FINAL_STATUS_LABELS) as Array<[FinalStatus, string]>).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
         </label>
         <label>
@@ -81,6 +89,19 @@ export default function DashboardFilters({
             <option value="">Todos</option>
             <option value="entregou">Entregou</option>
             <option value="nao-entregou">Não entregou</option>
+            <option value="pendente">Pendente</option>
+          </select>
+        </label>
+        <label>
+          Faixa de frequência
+          <select name="frequencia" defaultValue={filters.frequencyRange ?? ""}>
+            <option value="">Todas</option><option value="0-49">0–49%</option><option value="50-74">50–74%</option><option value="75-89">75–89%</option><option value="90-100">90–100%</option>
+          </select>
+        </label>
+        <label>
+          Faixa de progresso
+          <select name="progresso" defaultValue={filters.progressRange ?? ""}>
+            <option value="">Todas</option><option value="0">0%</option><option value="1-24">1–24%</option><option value="25-49">25–49%</option><option value="50-74">50–74%</option><option value="75-99">75–99%</option><option value="100">100%</option>
           </select>
         </label>
       </div>
