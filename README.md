@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Acompanhamento 2026
 
 Aplicação inicial para centralizar as planilhas de acompanhamento de cursistas do curso 2026 na Região Norte.
@@ -133,3 +134,6 @@ A estrutura já permite adicionar, sem alterar a lógica principal:
 - trilha de auditoria de alterações;
 - relatórios PDF;
 - exportação geral de todas as turmas.
+=======
+# Acompanhamento
+>>>>>>> b1f1573a054853f6e466813a5a69300d3fcd8b35
