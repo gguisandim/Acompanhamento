@@ -57,10 +57,10 @@ export default async function StudentPage({
         <article><span>Situação</span><strong className="metric-text">{FINAL_STATUS_LABELS[effective]}</strong></article>
       </section>
 
-      {stale ? <div className="alert alert-warning student-review-alert"><strong>Revisão final desatualizada.</strong> Há presença ou trabalho final alterado depois da última confirmação.</div> : null}
+      {stale ? <div className="alert alert-warning student-review-alert"><strong>Revisão final desatualizada.</strong> Há atividade registrada ou trabalho final alterado depois da última confirmação.</div> : null}
 
       <section className="section-block">
-        <div className="section-heading"><div><h2>Acompanhamento por módulo</h2><p>Frequência, progresso e registros de presença.</p></div></div>
+        <div className="section-heading"><div><h2>Acompanhamento por módulo</h2><p>Frequência, progresso e registros das atividades EAD.</p></div></div>
         <div className="student-modules-grid">
           {MODULES.map((module) => {
             const values = SLOTS.map((slot) => student.attendance[`${module}-${slot}`] ?? null);

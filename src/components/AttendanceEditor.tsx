@@ -25,13 +25,15 @@ function parseCellKey(key: string) {
 export default function AttendanceEditor({
   classroomId,
   students,
-  canEdit
+  canEdit,
+  initialModule
 }: {
   classroomId: string;
   students: Student[];
   canEdit: boolean;
+  initialModule?: number | null;
 }) {
-  const [view, setView] = useState<"overview" | number>("overview");
+  const [view, setView] = useState<"overview" | number>(() => initialModule ?? "overview");
   const [matrixMode, setMatrixMode] = useState<"frequency" | "progress">("frequency");
   const [attendance, setAttendance] = useState<Record<string, AttendanceStatus | "">>(() => {
     const initial: Record<string, AttendanceStatus | ""> = {};
@@ -86,7 +88,7 @@ export default function AttendanceEditor({
       }
     }
     if (!changed.length) {
-      setMessage("Não há campos vazios nessa presença.");
+      setMessage("Não há campos vazios nessa atividade.");
       return;
     }
 
@@ -233,12 +235,12 @@ export default function AttendanceEditor({
                 <th>Município</th>
                 {SLOTS.map((slot) => (
                   <th key={slot}>
-                    <span>Presença {slot}</span>
+                    <span>Atividade {slot}</span>
                     {canEdit ? (
                       <button
                         type="button"
                         className="mini-action"
-                        title={`Preencher somente os campos vazios da presença ${slot} com P`}
+                        title={`Preencher somente os campos vazios da atividade ${slot} com P`}
                         onClick={() => fillEmptySlot(slot)}
                       >
                         vazios → P
@@ -294,7 +296,7 @@ export default function AttendanceEditor({
 
       <div className="save-bar">
         <div>
-          <strong>Frequência:</strong> P ÷ (P + F). N/A e campos vazios não entram no cálculo.
+          <strong>Atividades EAD:</strong> P indica participação/presença registrada na atividade; F indica ausência/não participação; N/A indica que a atividade não se aplica. A frequência é P ÷ (P + F).
           <br />
           <strong>Resultado final:</strong> frequência e trabalho final subsidiam a situação sugerida; a confirmação acontece na etapa de Resultado final.
         </div>

@@ -1,7 +1,6 @@
 import Link from "next/link";
 import AppShell from "@/components/AppShell";
-import DashboardCharts from "@/components/DashboardCharts";
-import DashboardFilters from "@/components/DashboardFilters";
+import StateScopeSelector from "@/components/StateScopeSelector";
 import StudentSearch from "@/components/StudentSearch";
 import { requireUser } from "@/lib/auth";
 import { getDashboardModel, type DashboardQuery } from "@/lib/dashboard";
@@ -17,7 +16,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const user = await requireUser();
   const query = await searchParams;
   const [model, searchResults] = await Promise.all([
-    getDashboardModel(user, query),
+    getDashboardModel(user, { estado: query.estado }),
     searchAccessibleStudents(user, query.busca ?? "")
   ]);
 
@@ -25,13 +24,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
     <AppShell user={user}>
       <header className="page-header dashboard-header">
         <div>
-          <p className="eyebrow">VISÃO GERENCIAL</p>
+          <p className="eyebrow">VISÃO GERAL</p>
           <h1>Acompanhamento 2026</h1>
           <p className="muted">
-            {model ? `${model.filters.stateName} · indicadores atualizados a partir dos registros das turmas.` : "Seu acesso ainda não possui turmas vinculadas."}
+            {model ? `${model.filters.stateName} · resumo operacional do curso EAD.` : "Seu acesso ainda não possui turmas vinculadas."}
           </p>
         </div>
-        {model ? <span className="data-badge">Dados reais do acompanhamento</span> : null}
+        {model ? (
+          <StateScopeSelector
+            states={model.states}
+            selectedCode={model.filters.stateCode}
+            canSelectState={model.canSelectState}
+            action="/dashboard"
+          />
+        ) : null}
       </header>
 
       {!model ? (
@@ -43,70 +49,68 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         <>
           <StudentSearch term={(query.busca ?? "").trim()} results={searchResults} />
 
-          <DashboardFilters
-            key={JSON.stringify(model.filters)}
-            filters={model.filters}
-            states={model.states}
-            classrooms={model.classroomOptions}
-            municipalities={model.municipalityOptions}
-            canSelectState={model.canSelectState}
-          />
-
-          {model.filters.module ? (
-            <p className="scope-note">Com o Módulo {model.filters.module} selecionado, frequência e progresso usam os seis registros desse módulo. A situação final continua baseada no curso completo.</p>
-          ) : null}
-
-          <section className="metrics dashboard-metrics" aria-label="Indicadores">
-            <article className="metric accent-blue"><span>Total de cursistas</span><strong>{model.data.overview.totalStudents}</strong><small>No recorte selecionado</small></article>
-            <article className="metric accent-green"><span>Frequência média</span><strong>{percent(model.data.overview.averageFrequency)}</strong><small>P ÷ (P + F)</small></article>
-            <article className="metric accent-blue"><span>Progresso do acompanhamento</span><strong>{percent(model.data.overview.progress)}</strong><small>P, F e N/A preenchidos</small></article>
-            <article className="metric accent-blue"><span>Acompanhamento iniciado</span><strong>{model.data.overview.started}</strong><small>Ao menos um registro</small></article>
-            <article className="metric accent-green"><span>Acompanhamento completo</span><strong>{model.data.overview.complete}</strong><small>Todos os registros preenchidos</small></article>
-            <article className="metric accent-amber"><span>Frequência abaixo de 75%</span><strong>{model.data.overview.belowMinimum}</strong><small>Métrica de atenção</small></article>
-            <article className="metric accent-green"><span>Trabalhos entregues</span><strong>{model.data.overview.finalWorkDelivered}</strong><small>Registro explícito</small></article>
-            <article className="metric accent-amber"><span>Trabalhos pendentes</span><strong>{model.data.overview.pendingFinalWork}</strong><small>Ainda não informado</small></article>
-            <article className="metric accent-green"><span>Aptos à certificação</span><strong>{model.data.overview.aptStudents}</strong><small>Situação final efetiva</small></article>
-            <article className="metric accent-amber"><span>Exigem atenção</span><strong>{model.data.overview.attention}</strong><small>Lista priorizada abaixo</small></article>
+          <section className="metrics dashboard-metrics dashboard-metrics-compact" aria-label="Indicadores principais">
+            <article className="metric accent-blue"><span>Total de cursistas</span><strong>{model.data.overview.totalStudents}</strong><small>{model.data.overview.classrooms} turma(s) no estado</small></article>
+            <article className="metric accent-green"><span>Frequência média</span><strong>{percent(model.data.overview.averageFrequency)}</strong><small>Participação registrada nas atividades</small></article>
+            <article className="metric accent-blue"><span>Progresso do acompanhamento</span><strong>{percent(model.data.overview.progress)}</strong><small>Atividades com P, F ou N/A</small></article>
+            <article className="metric accent-green"><span>Acompanhamento completo</span><strong>{model.data.overview.complete}</strong><small>Cursistas com 36 registros preenchidos</small></article>
+            <article className="metric accent-amber"><span>Frequência abaixo de 75%</span><strong>{model.data.overview.belowMinimum}</strong><small>Sinal de atenção, não reprovação</small></article>
+            <article className="metric accent-amber"><span>Exigem atenção</span><strong>{model.data.overview.attention}</strong><small>Pendências de acompanhamento</small></article>
           </section>
 
-          <DashboardCharts data={model.data} />
+          <section className="dashboard-shortcuts" aria-label="Acessos rápidos">
+            <Link href={`/turmas?estado=${model.filters.stateCode}`} className="shortcut-card shortcut-primary">
+              <span className="shortcut-icon">01</span>
+              <div><strong>Preencher turmas</strong><p>Acesse rapidamente cada turma e abra diretamente o módulo que precisa ser atualizado.</p></div>
+              <i>→</i>
+            </Link>
+            <Link href={`/analises?estado=${model.filters.stateCode}`} className="shortcut-card">
+              <span className="shortcut-icon">02</span>
+              <div><strong>Análises</strong><p>Gráficos de frequência, progresso, atividades, municípios e comparação entre turmas.</p></div>
+              <i>→</i>
+            </Link>
+            <Link href={`/resultados?estado=${model.filters.stateCode}`} className="shortcut-card">
+              <span className="shortcut-icon">03</span>
+              <div><strong>Resultados finais</strong><p>Acompanhe trabalho final, situação do curso e revisões de cada turma.</p></div>
+              <i>→</i>
+            </Link>
+          </section>
 
-          <section className="section-block" id="turmas">
-            <div className="section-heading">
-              <div><h2>Resumo das turmas</h2><p>Os mesmos critérios dos indicadores e gráficos.</p></div>
-              <span>{model.data.classrooms.length} turma(s)</span>
-            </div>
-            <div className="table-wrap">
-              <table className="summary-table">
-                <thead>
-                  <tr>
-                    <th>Turma</th><th>Cursistas</th><th>Frequência média</th><th>Progresso</th><th>Completo</th><th>&lt; 75%</th><th>Trabalho pendente</th><th>Aptos</th><th><span className="sr-only">Acessar</span></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {model.data.classrooms.map((classroom) => (
-                    <tr key={classroom.id}>
-                      <td><Link className="table-primary-link" href={`/turmas/${classroom.id}`}>{classroom.name}</Link></td>
-                      <td>{classroom.students}</td>
-                      <td><strong>{percent(classroom.averageFrequency)}</strong></td>
-                      <td><strong>{percent(classroom.progress)}</strong></td>
-                      <td>{classroom.complete}</td>
-                      <td>{classroom.belowMinimum}</td>
-                      <td>{classroom.pendingFinalWork}</td>
-                      <td><span className="status ok">{classroom.aptStudents}</span></td>
-                      <td><Link className="row-arrow" href={`/turmas/${classroom.id}`} aria-label={`Abrir ${classroom.name}`}>→</Link></td>
-                    </tr>
+          <section className="dashboard-preview-grid">
+            <article className="section-card">
+              <div className="section-heading">
+                <div><h2>Turmas</h2><p>Resumo rápido do estado selecionado.</p></div>
+                <Link className="text-link" href={`/turmas?estado=${model.filters.stateCode}`}>Ver todas →</Link>
+              </div>
+              <div className="compact-class-list">
+                {model.data.classrooms.map((classroom) => (
+                  <Link key={classroom.id} href={`/turmas/${classroom.id}`}>
+                    <div><strong>{classroom.name}</strong><span>{classroom.students} cursistas</span></div>
+                    <div className="compact-class-metrics"><span>Freq. {percent(classroom.averageFrequency)}</span><span>Progresso {percent(classroom.progress)}</span></div>
+                    <i>→</i>
+                  </Link>
+                ))}
+              </div>
+            </article>
+
+            <article className="section-card">
+              <div className="section-heading">
+                <div><h2>Atenções prioritárias</h2><p>Alguns cursistas com pendências no acompanhamento.</p></div>
+                <span>{model.data.attention.length} sinalizado(s)</span>
+              </div>
+              {model.data.attention.length ? (
+                <div className="attention-compact-list">
+                  {model.data.attention.slice(0, 6).map((student) => (
+                    <Link key={student.id} href={`/turmas/${student.classroomId}/cursistas/${student.id}`}>
+                      <div><strong>{student.name}</strong><span>{student.classroom} · {student.municipality || "Município não informado"}</span></div>
+                      <div><span>{student.reason}</span><small>{FINAL_STATUS_LABELS[student.status]}</small></div>
+                    </Link>
                   ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="section-block" id="atencao">
-            <div className="section-heading"><div><h2>Cursistas que exigem atenção</h2><p>Pendências para acompanhamento; não é um ranking nem reprovação.</p></div><span>{model.data.attention.length} exibido(s)</span></div>
-            {model.data.attention.length ? <div className="table-wrap"><table className="summary-table attention-table"><thead><tr><th>Cursista</th><th>Turma</th><th>Município</th><th>Frequência</th><th>Progresso</th><th>Trabalho final</th><th>Situação</th><th>Motivo</th></tr></thead><tbody>
-              {model.data.attention.map((student) => <tr key={student.id}><td><Link className="table-primary-link" href={`/turmas/${student.classroomId}/cursistas/${student.id}`}>{student.name}</Link></td><td>{student.classroom}</td><td>{student.municipality || "—"}</td><td>{percent(student.frequency)}</td><td>{percent(student.progress)}</td><td>{student.finalWork === null ? "Pendente" : student.finalWork ? "Entregou" : "Não entregou"}</td><td>{FINAL_STATUS_LABELS[student.status]}</td><td>{student.reason}</td></tr>)}
-            </tbody></table></div> : <div className="empty-state"><h2>Nenhuma atenção sinalizada</h2><p>Não há pendências nos critérios do recorte selecionado.</p></div>}
+                </div>
+              ) : (
+                <div className="empty-state compact-empty"><h2>Nenhuma atenção sinalizada</h2><p>Não há pendências nos critérios atuais.</p></div>
+              )}
+            </article>
           </section>
         </>
       )}

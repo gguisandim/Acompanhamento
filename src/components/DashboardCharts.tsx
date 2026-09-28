@@ -46,18 +46,18 @@ function Heatmap({ data }: { data: DashboardData }) {
 }
 
 function EncounterHeatmap({ data }: { data: DashboardData }) {
-  if (!data.encounters.length) return <div className="chart-empty">Sem presenças válidas para comparar encontros.</div>;
+  if (!data.encounters.length) return <div className="chart-empty">Sem registros válidos para comparar as atividades.</div>;
   const modules = Array.from(new Set(data.encounters.map((item) => item.module))).sort();
-  return <div className="heatmap encounter-heatmap"><div />{[1,2,3,4,5,6].map((slot) => <strong key={slot}>Encontro {slot}</strong>)}
+  return <div className="heatmap encounter-heatmap"><div />{[1,2,3,4,5,6].map((slot) => <strong key={slot}>Atividade {slot}</strong>)}
     {modules.flatMap((module) => [<span className="heatmap-label" key={`${module}-label`}>Módulo {module}</span>, ...[1,2,3,4,5,6].map((slot) => {
       const value = data.encounters.find((item) => item.module === module && item.slot === slot)?.frequency ?? null;
-      return <span className="heatmap-cell" key={`${module}-${slot}`} title={`Módulo ${module}, encontro ${slot}: ${percent(value)}`} style={{ backgroundColor: value === null ? "#f3f6f7" : `rgba(59,167,216,${Math.max(.08,value)*.72})` }}>{percent(value)}</span>;
+      return <span className="heatmap-cell" key={`${module}-${slot}`} title={`Módulo ${module}, atividade ${slot}: ${percent(value)}`} style={{ backgroundColor: value === null ? "#f3f6f7" : `rgba(59,167,216,${Math.max(.08,value)*.72})` }}>{percent(value)}</span>;
     })])}
   </div>;
 }
 
 function ParticipationChart({ data }: { data: DashboardData }) {
-  if (!data.participation.length) return <div className="chart-empty">Sem registros de presença neste recorte.</div>;
+  if (!data.participation.length) return <div className="chart-empty">Sem registros de atividade neste recorte.</div>;
   return <div className="stacked-list">
     <div className="stacked-legend"><span><i className="legend-p" />P</span><span><i className="legend-f" />F</span><span><i className="legend-na" />N/A</span></div>
     {data.participation.map((item) => {
@@ -104,19 +104,19 @@ function SectionTitle({ eyebrow, title, text }: { eyebrow: string; title: string
 
 export default function DashboardCharts({ data }: { data: DashboardData }) {
   return <div className="dashboard-analytics" id="resultados">
-    <SectionTitle eyebrow="Participação" title="Presença e frequência" text="Como os cursistas estão participando dos módulos e encontros." />
+    <SectionTitle eyebrow="Participação" title="Atividades e frequência" text="Como os cursistas estão participando das atividades dos módulos do curso EAD." />
     <section className="charts-grid dashboard-charts">
       <article className="chart-card"><div className="chart-heading"><h2>Frequência média por turma</h2><p>P ÷ (P + F), sem transformar módulo em aprovação</p></div><BarList items={data.classrooms.map((item) => ({ label:item.name,value:item.averageFrequency }))} /></article>
       <article className="chart-card"><div className="chart-heading"><h2>Frequência por módulo</h2><p>“—” significa ausência de P/F válidos</p></div><BarList items={data.modules.map((item) => ({ label:`Módulo ${item.module}`,value:item.averageFrequency }))} /></article>
       <article className="chart-card chart-full"><div className="chart-heading"><h2>Composição P / F / N/A por módulo</h2><p>Mostra a composição dos registros preenchidos, sem confundir N/A com falta.</p></div><ParticipationChart data={data} /></article>
       <article className="chart-card"><div className="chart-heading"><h2>Distribuição de frequência</h2><p>Inclui cursistas sem P/F válido como “Sem dados”.</p></div><BarList mode="count" items={data.frequencyDistribution.map((item) => ({ label:item.label,value:item.count }))} /></article>
-      <article className="chart-card chart-full"><div className="chart-heading"><h2>Encontros / presenças</h2><p>Ajuda a localizar encontros com participação atipicamente baixa</p></div><EncounterHeatmap data={data} /></article>
+      <article className="chart-card chart-full"><div className="chart-heading"><h2>Atividades do módulo</h2><p>Ajuda a localizar atividades com participação atipicamente baixa</p></div><EncounterHeatmap data={data} /></article>
     </section>
 
     <SectionTitle eyebrow="Progresso" title="Preenchimento e andamento" text="Quanto do acompanhamento já foi registrado e onde existem lacunas." />
     <section className="charts-grid dashboard-charts">
       <article className="chart-card"><div className="chart-heading"><h2>Progresso por turma</h2><p>Registros P, F ou N/A preenchidos</p></div><BarList tone="blue" items={data.classrooms.map((item) => ({ label:item.name,value:item.progress }))} /></article>
-      <article className="chart-card"><div className="chart-heading"><h2>Progresso por módulo</h2><p>Preenchimento dos seis encontros esperados</p></div><BarList tone="blue" items={data.modules.map((item) => ({ label:`Módulo ${item.module}`,value:item.progress }))} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Progresso por módulo</h2><p>Preenchimento das seis atividades previstas</p></div><BarList tone="blue" items={data.modules.map((item) => ({ label:`Módulo ${item.module}`,value:item.progress }))} /></article>
       <article className="chart-card chart-full"><div className="chart-heading"><h2>Turma × módulo</h2><p>Alterne entre participação e preenchimento</p></div><Heatmap data={data} /></article>
       <article className="chart-card"><div className="chart-heading"><h2>Distribuição de progresso</h2><p>Nível de preenchimento</p></div><BarList mode="count" tone="blue" items={data.progressDistribution.map((item) => ({ label:item.label,value:item.count }))} /></article>
       <article className="chart-card"><div className="chart-heading"><h2>Marcos do curso</h2><p>Indicadores de andamento; não representam um funil obrigatório.</p></div><div className="milestones-list">{data.milestones.map((item) => <div key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>)}</div></article>

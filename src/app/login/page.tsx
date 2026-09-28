@@ -19,7 +19,7 @@ export default async function LoginPage({
         <p className="eyebrow">CURSO 2026 · REGIÃO NORTE</p>
         <h1>Acompanhamento de cursistas</h1>
         <p className="muted">
-          Presenças, trabalho final, resultados e consolidação das 42 turmas em um único ambiente.
+          Atividades, participação, trabalho final, resultados e consolidação das 42 turmas do curso EAD em um único ambiente.
         </p>
 
         {erro ? <div className="alert alert-error">{erro}</div> : null}

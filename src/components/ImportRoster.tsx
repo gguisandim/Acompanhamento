@@ -47,7 +47,7 @@ export default function ImportRoster({ classroomId }: { classroomId: string }) {
         <span>Selecione a planilha .xlsx</span>
         <small>
           O importador lê a aba “1 - Acompanhamento”, linhas 8 a 37, incluindo nome,
-          município, 36 presenças e trabalho final.
+          município, 36 registros de atividade/participação e trabalho final.
         </small>
         <input
           type="file"
@@ -59,7 +59,7 @@ export default function ImportRoster({ classroomId }: { classroomId: string }) {
 
       <div className="alert">
         Importação conservadora: cursistas são conciliados por nome e município. Células
-        válidas atualizam o acompanhamento; vazios não apagam presenças, e cursistas ausentes
+        válidas atualizam o acompanhamento; vazios não apagam registros já preenchidos, e cursistas ausentes
         no arquivo permanecem cadastrados. Conflitos são bloqueados para revisão.
       </div>
 

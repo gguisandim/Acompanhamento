@@ -10,10 +10,11 @@ function userContext(user: CurrentUser) {
   return parts.join(" • ");
 }
 
-function Icon({ name }: { name: "home" | "class" | "result" | "users" | "profile" }) {
+function Icon({ name }: { name: "home" | "class" | "analytics" | "result" | "users" | "profile" }) {
   const paths = {
     home: <><path d="M3 11.5 12 4l9 7.5" /><path d="M5.5 10v9h13v-9" /></>,
     class: <><path d="M4 5.5h16v13H4z" /><path d="M8 9h8M8 13h5" /></>,
+    analytics: <><path d="M4 19V11" /><path d="M10 19V5" /><path d="M16 19v-8" /><path d="M22 19V8" /></>,
     result: <><path d="M5 19V9m7 10V5m7 14v-7" /></>,
     users: <><path d="M16 20v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 20v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></>,
     profile: <><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>
@@ -43,8 +44,9 @@ export default function AppShell({
           <nav className="nav" aria-label="Navegação principal">
             <Link href="/dashboard"><Icon name="home" />Visão geral</Link>
             <p className="nav-label">Acompanhamento</p>
-            <Link href="/dashboard#turmas"><Icon name="class" />Turmas</Link>
-            <Link href="/dashboard#resultados"><Icon name="result" />Resultados</Link>
+            <Link href="/turmas"><Icon name="class" />Turmas</Link>
+            <Link href="/analises"><Icon name="analytics" />Análises</Link>
+            <Link href="/resultados"><Icon name="result" />Resultados</Link>
             {user.role === "ADMIN" ? (
               <>
                 <p className="nav-label">Gestão</p>

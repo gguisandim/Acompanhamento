@@ -21,7 +21,7 @@ A autorização é validada no backend. `state_id` define o escopo estadual e `c
 states
   └── classrooms
        ├── students
-       │    └── attendance (6 módulos × 6 encontros)
+       │    └── attendance (6 módulos × 6 atividades/registros de participação)
        └── users PROFESSOR
 
 students
@@ -35,7 +35,7 @@ students
 
 ## Regras de acompanhamento
 
-- `P`: presente.
+- `P`: participação/presença registrada na atividade EAD.
 - `F`: falta.
 - `N/A`: não se aplica.
 - vazio: ainda não preenchido.
@@ -44,7 +44,7 @@ students
 - Progresso = quantidade de registros `P`, `F` ou `N/A` / quantidade esperada.
 - `N/A` conta como campo preenchido para progresso.
 - Não existe aprovação ou reprovação por módulo.
-- Os módulos servem exclusivamente para acompanhar presença, frequência e preenchimento.
+- Os módulos servem exclusivamente para acompanhar atividades/participação, frequência e preenchimento; o curso é totalmente EAD.
 
 ## Trabalho final e situação final
 
@@ -52,9 +52,9 @@ O trabalho final pertence ao encerramento do curso e aceita três estados: entre
 
 A aplicação calcula uma situação final sugerida com base no conjunto do curso. A situação manual, quando confirmada por um responsável autorizado, prevalece sobre a sugestão. Se a decisão manual divergir da sugestão, deve existir uma justificativa.
 
-Uma revisão final confirmada é marcada como desatualizada quando uma presença ou o trabalho final do cursista é alterado depois de `final_review_updated_at`. A decisão manual não é apagada automaticamente; a interface apenas sinaliza que precisa ser revista.
+Uma revisão final confirmada é marcada como desatualizada quando um registro de atividade ou o trabalho final do cursista é alterado depois de `final_review_updated_at`. A decisão manual não é apagada automaticamente; a interface apenas sinaliza que precisa ser revista.
 
-## Salvamento de presença
+## Salvamento dos registros das atividades
 
 O editor mantém dirty tracking no cliente. Apenas células realmente alteradas são enviadas à API. O backend faz UPSERT em lote para registros preenchidos e DELETE em lote para células que foram explicitamente limpas. Isso reduz tráfego, queries e risco de sobrescrever alterações concorrentes que o usuário não tocou.
 
@@ -64,7 +64,7 @@ A ação em massa padrão é `Preencher vazios com P`: ela nunca sobrescreve `F`
 
 O painel separa três eixos conceituais:
 
-1. Participação: frequência, composição `P/F/N/A` e encontros.
+1. Participação: frequência, composição `P/F/N/A` e atividades dos módulos.
 2. Progresso: preenchimento por turma/módulo, heatmaps e relação frequência × progresso.
 3. Território e encerramento: município, trabalho final e situação final.
 
@@ -79,3 +79,8 @@ A importação é conservadora: cursistas existentes são conciliados e atualiza
 ## Exportação
 
 A exportação usa o template oficial em `assets/` e mantém as duas abas. Como não existe aprovação por módulo, o consolidado por módulo usa frequência e progresso, preservando a compatibilidade conceitual com o acompanhamento atual.
+
+
+## Separação das páginas
+
+A aplicação separa a visão executiva da operação diária: `/dashboard` resume o estado do curso, `/turmas` é o ponto principal de preenchimento, `/analises` concentra gráficos/filtros e `/resultados` concentra o encerramento das turmas.

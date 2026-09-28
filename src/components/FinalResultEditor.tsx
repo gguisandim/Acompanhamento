@@ -273,7 +273,7 @@ export default function FinalResultEditor({
             setMessage("");
           }}
         />
-        <p className="muted">A situação sugerida é calculada; a situação confirmada só muda por revisão humana. Alterações posteriores em presença ou trabalho final sinalizam a revisão como desatualizada.</p>
+        <p className="muted">A situação sugerida é calculada; a situação confirmada só muda por revisão humana. Alterações posteriores nas atividades registradas ou no trabalho final sinalizam a revisão como desatualizada.</p>
       </div>
 
       {canEdit ? (

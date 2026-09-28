@@ -7,8 +7,8 @@ Aplicação inicial para centralizar as planilhas de acompanhamento de cursistas
 - 7 estados: AC, AP, AM, PA, RO, RR e TO.
 - 6 turmas por estado (42 turmas).
 - Cada turma comporta as 30 posições do modelo de planilha.
-- 6 módulos, com 6 registros de presença em cada módulo.
-- Presenças: `P`, `F`, `N/A` ou vazio.
+- 6 módulos, com 6 registros de atividade/participação em cada módulo (curso totalmente EAD).
+- Registros das atividades: `P` (participação/presença registrada), `F` (ausência/não participação), `N/A` ou vazio.
 - Frequência = `P / (P + F)`. `N/A` e vazio são ignorados.
 - Progresso = registros `P`, `F` ou `N/A` preenchidos / registros esperados. Vazio não conta.
 - Frequência mínima: 75%.
@@ -17,12 +17,12 @@ Aplicação inicial para centralizar as planilhas de acompanhamento de cursistas
 - Cursistas são importados previamente; professor não cria/remove cursistas.
 - Não existe aprovação/reprovação por módulo.
 - O trabalho final é editado apenas no Resultado Final.
-- Presenças usam salvamento incremental: somente células alteradas são enviadas.
-- Revisões finais ficam sinalizadas quando presença ou trabalho final mudam depois da confirmação.
+- Os registros das atividades usam salvamento incremental: somente células alteradas são enviadas.
+- Revisões finais ficam sinalizadas quando atividades registradas ou trabalho final mudam depois da confirmação.
 
 ## Perfis
 
-| Perfil | Escopo | Edita presença | Importa turma | Gerencia usuários |
+| Perfil | Escopo | Edita atividades | Importa turma | Gerencia usuários |
 | --- | --- | --- | --- | --- |
 | Professor | Visualiza as 6 turmas do estado; edita 1 turma atribuída | Somente sua turma | Não | Não |
 | Coordenador estadual | 6 turmas do seu estado | Sim | Sim | Não |
@@ -40,16 +40,16 @@ Ele lê a aba `1 - Acompanhamento`:
 - linhas 8 a 37: 30 posições de cursistas;
 - coluna B: cursista;
 - coluna C: município;
-- colunas D:AM: 36 registros de presença, 6 por módulo;
+- colunas D:AM: 36 registros de atividade/participação, 6 por módulo;
 - coluna AN: trabalho final.
 
-A importação é **conservadora**: concilia cursistas por nome e município, insere novos registros e atualiza apenas células explícitas. Cursistas ausentes e presenças em células vazias não são excluídos. Ambiguidades são bloqueadas para revisão.
+A importação é **conservadora**: concilia cursistas por nome e município, insere novos registros e atualiza apenas células explícitas. Cursistas ausentes e registros em células vazias não são excluídos. Ambiguidades são bloqueadas para revisão.
 
 ## Exportação
 
 Cada turma pode ser exportada para `.xlsx`, com:
 
-1. `1 - Acompanhamento`: estrutura do modelo oficial, incluindo as 36 presenças.
+1. `1 - Acompanhamento`: estrutura do modelo oficial, incluindo os 36 registros das atividades.
 2. `2 - Resultado Final`: frequência e progresso por módulo, frequência e progresso geral, trabalho final, situação e observações.
 
 Não existe aprovação ou reprovação por módulo. Os módulos mostram apenas frequência, progresso e estado de preenchimento.
@@ -155,3 +155,13 @@ A estrutura já permite adicionar, sem alterar a lógica principal:
 - trilha de auditoria detalhada de alterações;
 - relatórios PDF;
 - exportação geral de todas as turmas.
+
+
+## Navegação principal
+
+- `/dashboard`: visão geral executiva e atalhos.
+- `/turmas`: página operacional para localizar a turma e abrir diretamente um módulo.
+- `/analises`: gráficos e filtros detalhados.
+- `/resultados`: acesso consolidado aos resultados finais por turma.
+
+Os termos da interface tratam os seis registros de cada módulo como atividades/participações EAD; não são encontros presenciais.

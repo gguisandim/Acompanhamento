@@ -12,12 +12,17 @@ function percent(value: number | null) {
 }
 
 export default async function ClassroomPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ modulo?: string }>;
 }) {
   const user = await requireUser();
   const { id } = await params;
+  const query = await searchParams;
+  const moduleNumber = Number(query.modulo);
+  const initialModule = Number.isInteger(moduleNumber) && moduleNumber >= 1 && moduleNumber <= 6 ? moduleNumber : null;
   const classroom = await getClassroom(id);
   if (!classroom) notFound();
   if (!canAccessClass(user, classroom)) redirect("/dashboard");
@@ -36,6 +41,7 @@ export default async function ClassroomPage({
           <p className="muted">Professor responsável: <strong>{overview.professorName ?? "Não atribuído"}</strong></p>
         </div>
         <div className="header-actions">
+          <Link className="button button-secondary" href="/turmas">← Turmas</Link>
           <Link className="button button-secondary" href={`/turmas/${id}/resultado`}>Resultado final</Link>
           {canImportRoster(user, classroom) ? (
             <Link className="button button-secondary" href={`/turmas/${id}/importar`}>Importar planilha</Link>
@@ -57,6 +63,7 @@ export default async function ClassroomPage({
         classroomId={id}
         students={students}
         canEdit={canEditClass(user, classroom)}
+        initialModule={initialModule}
       />
     </AppShell>
   );

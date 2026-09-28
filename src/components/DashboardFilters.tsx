@@ -14,13 +14,15 @@ export default function DashboardFilters({
   states,
   classrooms,
   municipalities,
-  canSelectState
+  canSelectState,
+  basePath = "/dashboard"
 }: {
   filters: FilterValues;
   states: DashboardStateOption[];
   classrooms: DashboardClassroomOption[];
   municipalities: string[];
   canSelectState: boolean;
+  basePath?: string;
 }) {
   const router = useRouter();
 
@@ -29,7 +31,7 @@ export default function DashboardFilters({
     for (const [key, value] of formData.entries()) {
       if (typeof value === "string" && value) params.set(key, value);
     }
-    router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+    router.replace(`${basePath}?${params.toString()}`, { scroll: false });
   }
 
   return (
@@ -39,7 +41,7 @@ export default function DashboardFilters({
           <strong>Filtros do painel</strong>
           <span>Os indicadores abaixo usam este mesmo recorte.</span>
         </div>
-        <Link href={`/dashboard?estado=${filters.stateCode}`} className="filter-clear">Limpar filtros</Link>
+        <Link href={`${basePath}?estado=${filters.stateCode}`} className="filter-clear">Limpar filtros</Link>
       </div>
       <div className="filter-grid dashboard-filter-grid">
         <label>
