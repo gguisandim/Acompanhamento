@@ -71,6 +71,7 @@ CREATE TABLE IF NOT EXISTS students (
     'PENDING_REVIEW'
   )),
   final_observations TEXT,
+  final_review_justification TEXT,
   final_review_updated_at TIMESTAMPTZ,
   final_review_updated_by UUID REFERENCES users(id) ON DELETE SET NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),

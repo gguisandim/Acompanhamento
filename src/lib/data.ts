@@ -1,130 +1,6 @@
 import { db } from "./db";
 import type { AttendanceStatus, ClassroomScope, CurrentUser, FinalStatus } from "./types";
 
-export type ClassroomCard = {
-  id: string;
-  name: string;
-  number: number;
-  state_id: string;
-  state_code: string;
-  state_name: string;
-  student_count: number;
-  apt_count: number;
-  certified_count: number;
-};
-
-type ClassroomListRow = {
-  id: string;
-  name: string;
-  number: number;
-  state_id: string;
-  state_code: string;
-  state_name: string;
-};
-
-export async function getAccessibleClassrooms(user: CurrentUser): Promise<ClassroomCard[]> {
-  const sql = db();
-  let classrooms: ClassroomListRow[] = [];
-
-  if (user.role === "ADMIN" || user.role === "COORDENADOR_GERAL") {
-    const rows = await sql`
-      SELECT c.id, c.name, c.number, c.state_id, s.code AS state_code, s.name AS state_name
-      FROM classrooms c
-      JOIN states s ON s.id = c.state_id
-      ORDER BY s.name, c.number
-    `;
-    classrooms = rows.map((row) => ({
-      id: String(row.id),
-      name: String(row.name),
-      number: Number(row.number),
-      state_id: String(row.state_id),
-      state_code: String(row.state_code),
-      state_name: String(row.state_name)
-    }));
-  } else if (user.role === "COORDENADOR_ESTADUAL" && user.stateId) {
-    const rows = await sql`
-      SELECT c.id, c.name, c.number, c.state_id, s.code AS state_code, s.name AS state_name
-      FROM classrooms c
-      JOIN states s ON s.id = c.state_id
-      WHERE c.state_id = ${user.stateId}
-      ORDER BY c.number
-    `;
-    classrooms = rows.map((row) => ({
-      id: String(row.id),
-      name: String(row.name),
-      number: Number(row.number),
-      state_id: String(row.state_id),
-      state_code: String(row.state_code),
-      state_name: String(row.state_name)
-    }));
-  } else if (user.role === "PROFESSOR" && user.stateId) {
-    const rows = await sql`
-      SELECT c.id, c.name, c.number, c.state_id, s.code AS state_code, s.name AS state_name
-      FROM classrooms c
-      JOIN states s ON s.id = c.state_id
-      WHERE c.state_id = ${user.stateId}
-      ORDER BY c.number
-    `;
-    classrooms = rows.map((row) => ({
-      id: String(row.id),
-      name: String(row.name),
-      number: Number(row.number),
-      state_id: String(row.state_id),
-      state_code: String(row.state_code),
-      state_name: String(row.state_name)
-    }));
-  }
-
-  if (classrooms.length === 0) return [];
-
-  const ids = classrooms.map((row) => row.id);
-  const stats = await sql`
-    WITH student_frequency AS (
-      SELECT
-        st.id AS student_id,
-        st.classroom_id,
-        st.final_work_delivered,
-        COUNT(*) FILTER (WHERE a.status = 'P')::float AS presences,
-        COUNT(*) FILTER (WHERE a.status IN ('P','F'))::float AS considered
-      FROM students st
-      LEFT JOIN attendance a ON a.student_id = st.id
-      WHERE st.classroom_id IN ${sql(ids)}
-      GROUP BY st.id, st.classroom_id, st.final_work_delivered
-    )
-    SELECT
-      c.id AS classroom_id,
-      COUNT(sf.student_id)::int AS student_count,
-      COUNT(sf.student_id) FILTER (
-        WHERE sf.considered > 0 AND sf.presences / sf.considered >= 0.75
-      )::int AS apt_count,
-      COUNT(sf.student_id) FILTER (
-        WHERE sf.considered > 0
-          AND sf.presences / sf.considered >= 0.75
-          AND sf.final_work_delivered = TRUE
-      )::int AS certified_count
-    FROM classrooms c
-    LEFT JOIN student_frequency sf ON sf.classroom_id = c.id
-    WHERE c.id IN ${sql(ids)}
-    GROUP BY c.id
-  `;
-
-  const byId = new Map(stats.map((row) => [row.classroom_id, row]));
-  return classrooms.map((row) => {
-    const stat = byId.get(row.id);
-    return {
-      id: row.id,
-      name: row.name,
-      number: Number(row.number),
-      state_id: row.state_id,
-      state_code: row.state_code,
-      state_name: row.state_name,
-      student_count: Number(stat?.student_count ?? 0),
-      apt_count: Number(stat?.apt_count ?? 0),
-      certified_count: Number(stat?.certified_count ?? 0)
-    };
-  });
-}
-
 export type ClassroomDetail = ClassroomScope & {
   name: string;
   number: number;
@@ -233,17 +109,28 @@ export type StudentDetail = {
   finalWorkDelivered: boolean | null;
   finalStatus: FinalStatus | null;
   finalObservations: string | null;
+  finalReviewJustification: string | null;
+  finalWorkUpdatedAt: string | null;
+  finalReviewUpdatedAt: string | null;
+  finalReviewUpdatedByName: string | null;
+  lastAttendanceUpdatedAt: string | null;
   attendance: Record<string, AttendanceStatus>;
 };
 
 export async function getClassroomStudents(classroomId: string): Promise<StudentDetail[]> {
   const sql = db();
   const students = await sql`
-    SELECT id, position, name, municipality, final_work_delivered,
-           final_status, final_observations
-    FROM students
-    WHERE classroom_id = ${classroomId}
-    ORDER BY position
+    SELECT st.id, st.position, st.name, st.municipality, st.final_work_delivered,
+           st.final_status, st.final_observations, st.final_review_justification,
+           st.final_work_updated_at, st.final_review_updated_at,
+           reviewer.name AS final_review_updated_by_name,
+           MAX(a.updated_at) AS last_attendance_updated_at
+    FROM students st
+    LEFT JOIN users reviewer ON reviewer.id = st.final_review_updated_by
+    LEFT JOIN attendance a ON a.student_id = st.id
+    WHERE st.classroom_id = ${classroomId}
+    GROUP BY st.id, reviewer.name
+    ORDER BY st.position
   `;
   if (students.length === 0) return [];
 
@@ -270,7 +157,63 @@ export async function getClassroomStudents(classroomId: string): Promise<Student
     finalWorkDelivered: student.final_work_delivered,
     finalStatus: student.final_status as FinalStatus | null,
     finalObservations: student.final_observations == null ? null : String(student.final_observations),
+    finalReviewJustification: student.final_review_justification == null ? null : String(student.final_review_justification),
+    finalWorkUpdatedAt: student.final_work_updated_at == null ? null : new Date(student.final_work_updated_at).toISOString(),
+    finalReviewUpdatedAt: student.final_review_updated_at == null ? null : new Date(student.final_review_updated_at).toISOString(),
+    finalReviewUpdatedByName: student.final_review_updated_by_name == null ? null : String(student.final_review_updated_by_name),
+    lastAttendanceUpdatedAt: student.last_attendance_updated_at == null ? null : new Date(student.last_attendance_updated_at).toISOString(),
     attendance: byStudent.get(student.id) ?? {}
+  }));
+}
+
+export type StudentSearchResult = {
+  id: string;
+  name: string;
+  municipality: string | null;
+  classroomId: string;
+  classroomName: string;
+  stateCode: string;
+  frequency: number | null;
+  progress: number;
+};
+
+export async function searchAccessibleStudents(user: CurrentUser, term: string): Promise<StudentSearchResult[]> {
+  const query = term.trim();
+  if (query.length < 2) return [];
+
+  const sql = db();
+  const unrestricted = user.role === "ADMIN" || user.role === "COORDENADOR_GERAL";
+  const rows = await sql`
+    SELECT st.id, st.name, st.municipality, c.id AS classroom_id, c.name AS classroom_name, s.code AS state_code,
+           CASE WHEN COUNT(a.student_id) FILTER (WHERE a.status IN ('P','F')) > 0
+             THEN COUNT(a.student_id) FILTER (WHERE a.status='P')::float
+                  / COUNT(a.student_id) FILTER (WHERE a.status IN ('P','F'))
+           END AS frequency,
+           COUNT(a.student_id)::float / 36.0 AS progress
+    FROM students st
+    JOIN classrooms c ON c.id = st.classroom_id
+    JOIN states s ON s.id = c.state_id
+    LEFT JOIN attendance a ON a.student_id = st.id
+    WHERE (${unrestricted} OR c.state_id = ${user.stateId})
+      AND (
+        st.name ILIKE ${`%${query}%`}
+        OR COALESCE(st.municipality, '') ILIKE ${`%${query}%`}
+        OR c.name ILIKE ${`%${query}%`}
+      )
+    GROUP BY st.id, c.id, c.name, s.code
+    ORDER BY st.name, c.name
+    LIMIT 30
+  `;
+
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    municipality: row.municipality == null ? null : String(row.municipality),
+    classroomId: String(row.classroom_id),
+    classroomName: String(row.classroom_name),
+    stateCode: String(row.state_code),
+    frequency: row.frequency == null ? null : Number(row.frequency),
+    progress: Number(row.progress ?? 0)
   }));
 }
 

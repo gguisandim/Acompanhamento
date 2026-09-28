@@ -2,8 +2,10 @@ import Link from "next/link";
 import AppShell from "@/components/AppShell";
 import DashboardCharts from "@/components/DashboardCharts";
 import DashboardFilters from "@/components/DashboardFilters";
+import StudentSearch from "@/components/StudentSearch";
 import { requireUser } from "@/lib/auth";
 import { getDashboardModel, type DashboardQuery } from "@/lib/dashboard";
+import { searchAccessibleStudents } from "@/lib/data";
 import { FINAL_STATUS_LABELS } from "@/lib/types";
 
 function percent(value: number | null, digits = 1) {
@@ -13,7 +15,11 @@ function percent(value: number | null, digits = 1) {
 
 export default async function DashboardPage({ searchParams }: { searchParams: Promise<DashboardQuery> }) {
   const user = await requireUser();
-  const model = await getDashboardModel(user, await searchParams);
+  const query = await searchParams;
+  const [model, searchResults] = await Promise.all([
+    getDashboardModel(user, query),
+    searchAccessibleStudents(user, query.busca ?? "")
+  ]);
 
   return (
     <AppShell user={user}>
@@ -35,6 +41,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         </section>
       ) : (
         <>
+          <StudentSearch term={(query.busca ?? "").trim()} results={searchResults} />
+
           <DashboardFilters
             key={JSON.stringify(model.filters)}
             filters={model.filters}
@@ -97,7 +105,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           <section className="section-block" id="atencao">
             <div className="section-heading"><div><h2>Cursistas que exigem atenção</h2><p>Pendências para acompanhamento; não é um ranking nem reprovação.</p></div><span>{model.data.attention.length} exibido(s)</span></div>
             {model.data.attention.length ? <div className="table-wrap"><table className="summary-table attention-table"><thead><tr><th>Cursista</th><th>Turma</th><th>Município</th><th>Frequência</th><th>Progresso</th><th>Trabalho final</th><th>Situação</th><th>Motivo</th></tr></thead><tbody>
-              {model.data.attention.map((student) => <tr key={student.id}><td><Link className="table-primary-link" href={`/turmas/${student.classroomId}`}>{student.name}</Link></td><td>{student.classroom}</td><td>{student.municipality || "—"}</td><td>{percent(student.frequency)}</td><td>{percent(student.progress)}</td><td>{student.finalWork === null ? "Pendente" : student.finalWork ? "Entregou" : "Não entregou"}</td><td>{FINAL_STATUS_LABELS[student.status]}</td><td>{student.reason}</td></tr>)}
+              {model.data.attention.map((student) => <tr key={student.id}><td><Link className="table-primary-link" href={`/turmas/${student.classroomId}/cursistas/${student.id}`}>{student.name}</Link></td><td>{student.classroom}</td><td>{student.municipality || "—"}</td><td>{percent(student.frequency)}</td><td>{percent(student.progress)}</td><td>{student.finalWork === null ? "Pendente" : student.finalWork ? "Entregou" : "Não entregou"}</td><td>{FINAL_STATUS_LABELS[student.status]}</td><td>{student.reason}</td></tr>)}
             </tbody></table></div> : <div className="empty-state"><h2>Nenhuma atenção sinalizada</h2><p>Não há pendências nos critérios do recorte selecionado.</p></div>}
           </section>
         </>

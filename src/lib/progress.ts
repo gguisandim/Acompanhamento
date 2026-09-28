@@ -88,16 +88,6 @@ export function effectiveFinalStatus(
   return manualStatus ?? suggestedStatus;
 }
 
-export function certificationResult(
-  statuses: Array<AttendanceStatus | null | undefined>,
-  finalWorkDelivered: boolean | null
-): boolean | null {
-  const status = suggestFinalStatus(statuses, finalWorkDelivered);
-  if (status === "READY_FOR_CERTIFICATION") return true;
-  if (status === "INSUFFICIENT_ATTENDANCE" || status === "NOT_COMPLETED") return false;
-  return null;
-}
-
 export function percentLabel(value: number | null, digits = 1): string {
   if (value === null || !Number.isFinite(value)) return "—";
   return `${value.toLocaleString("pt-BR", {

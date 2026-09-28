@@ -98,7 +98,11 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     if (student) {
       const suggested = suggestFinalStatus(all, student.finalWorkDelivered);
       result.getCell(row, 13).value = FINAL_STATUS_LABELS[effectiveFinalStatus(student.finalStatus, suggested)].toUpperCase();
-      result.getCell(row, 14).value = student.finalObservations ?? "";
+      const finalNotes = [
+        student.finalReviewJustification ? `Justificativa da revisão: ${student.finalReviewJustification}` : null,
+        student.finalObservations
+      ].filter(Boolean);
+      result.getCell(row, 14).value = finalNotes.join("\n");
     } else {
       result.getCell(row, 13).value = "";
       result.getCell(row, 14).value = "";

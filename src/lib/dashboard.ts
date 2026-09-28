@@ -3,7 +3,7 @@ import type { CurrentUser, FinalStatus } from "./types";
 
 export type DashboardQuery = {
   estado?: string; turma?: string; municipio?: string; modulo?: string;
-  trabalho?: string; situacao?: string; frequencia?: string; progresso?: string;
+  trabalho?: string; situacao?: string; frequencia?: string; progresso?: string; busca?: string;
 };
 
 export type DashboardFilters = {
@@ -24,6 +24,8 @@ export type HeatmapCell = { classroomId: string; classroom: string; module: numb
 export type DistributionItem = { key: string; label: string; count: number };
 export type MunicipalitySummary = { municipality: string; students: number; averageFrequency: number | null; progress: number };
 export type AttentionStudent = { id: string; name: string; classroomId: string; classroom: string; municipality: string | null; frequency: number | null; progress: number; finalWork: boolean | null; status: FinalStatus; reason: string };
+export type ParticipationSummary = { module: number; present: number; absent: number; notApplicable: number };
+export type FrequencyProgressPoint = { id: string; name: string; classroomId: string; classroom: string; municipality: string | null; frequency: number | null; progress: number; finalWork: boolean | null };
 
 export type DashboardData = {
   overview: { totalStudents: number; averageFrequency: number | null; progress: number; started: number; complete: number; belowMinimum: number; finalWorkDelivered: number; pendingFinalWork: number; aptStudents: number; attention: number; classrooms: number };
@@ -35,8 +37,10 @@ export type DashboardData = {
   finalWork: { delivered: number; notDelivered: number; pending: number };
   finalStatuses: Array<{ status: FinalStatus; count: number }>;
   encounters: Array<{ module: number; slot: number; frequency: number | null }>;
+  participation: ParticipationSummary[];
+  scatter: FrequencyProgressPoint[];
   municipalities: MunicipalitySummary[];
-  funnel: Array<{ label: string; count: number }>;
+  milestones: Array<{ label: string; count: number }>;
   attention: AttentionStudent[];
 };
 
@@ -87,6 +91,7 @@ export async function getDashboardModel(user: CurrentUser, query: DashboardQuery
         AND (${filters.classroomId}::uuid IS NULL OR c.id = ${filters.classroomId}::uuid)
     ), base_students AS (
       SELECT st.id, st.name, st.municipality, st.classroom_id, st.final_work_delivered, st.final_status,
+             st.final_work_updated_at, st.final_review_updated_at,
              sc.name AS classroom_name, sc.number AS classroom_number
       FROM students st JOIN selected_classrooms sc ON sc.id = st.classroom_id
     ), counts AS (
@@ -96,9 +101,11 @@ export async function getDashboardModel(user: CurrentUser, query: DashboardQuery
         COUNT(a.student_id)::float AS overall_filled,
         COUNT(a.student_id) FILTER (WHERE (${filters.module}::int IS NULL OR a.module = ${filters.module}) AND a.status = 'P')::float AS scoped_p,
         COUNT(a.student_id) FILTER (WHERE (${filters.module}::int IS NULL OR a.module = ${filters.module}) AND a.status IN ('P','F'))::float AS scoped_pf,
-        COUNT(a.student_id) FILTER (WHERE ${filters.module}::int IS NULL OR a.module = ${filters.module})::float AS scoped_filled
+        COUNT(a.student_id) FILTER (WHERE ${filters.module}::int IS NULL OR a.module = ${filters.module})::float AS scoped_filled,
+        MAX(a.updated_at) AS attendance_updated_at
       FROM base_students bs LEFT JOIN attendance a ON a.student_id = bs.id
-      GROUP BY bs.id, bs.name, bs.municipality, bs.classroom_id, bs.final_work_delivered, bs.final_status, bs.classroom_name, bs.classroom_number
+      GROUP BY bs.id, bs.name, bs.municipality, bs.classroom_id, bs.final_work_delivered, bs.final_status,
+               bs.final_work_updated_at, bs.final_review_updated_at, bs.classroom_name, bs.classroom_number
     ), stats_base AS (
       SELECT *,
         CASE WHEN scoped_pf > 0 THEN scoped_p / scoped_pf END AS frequency,
@@ -149,7 +156,10 @@ export async function getDashboardModel(user: CurrentUser, query: DashboardQuery
         CASE WHEN frequency IS NOT NULL AND frequency < 0.75 THEN 'Frequência abaixo de 75%' END,
         CASE WHEN progress = 0 THEN 'Acompanhamento não iniciado' WHEN progress < 0.75 THEN 'Muitos registros ainda não preenchidos' WHEN progress < 1 THEN 'Acompanhamento incompleto' END,
         CASE WHEN final_work_delivered IS NULL THEN 'Trabalho final pendente' WHEN final_work_delivered = FALSE THEN 'Trabalho final não entregue' END,
-        CASE WHEN effective_status = 'PENDING_REVIEW' THEN 'Situação final pendente de avaliação' END
+        CASE WHEN effective_status = 'PENDING_REVIEW' THEN 'Situação final pendente de avaliação' END,
+        CASE WHEN final_status IS NOT NULL AND final_review_updated_at IS NOT NULL
+          AND GREATEST(COALESCE(attendance_updated_at, '-infinity'::timestamptz), COALESCE(final_work_updated_at, '-infinity'::timestamptz)) > final_review_updated_at
+          THEN 'Revisão final desatualizada' END
       ) AS reason FROM filtered
     )
     SELECT
@@ -188,7 +198,8 @@ export async function getDashboardModel(user: CurrentUser, query: DashboardQuery
         (1,'0-49','0–49%',(SELECT COUNT(*) FROM filtered WHERE frequency < .50)),
         (2,'50-74','50–74%',(SELECT COUNT(*) FROM filtered WHERE frequency >= .50 AND frequency < .75)),
         (3,'75-89','75–89%',(SELECT COUNT(*) FROM filtered WHERE frequency >= .75 AND frequency < .90)),
-        (4,'90-100','90–100%',(SELECT COUNT(*) FROM filtered WHERE frequency >= .90))
+        (4,'90-100','90–100%',(SELECT COUNT(*) FROM filtered WHERE frequency >= .90)),
+        (5,'sem-dados','Sem dados',(SELECT COUNT(*) FROM filtered WHERE frequency IS NULL))
       ) x(ord,key,label,count)) AS frequency_distribution,
       (SELECT json_agg(x ORDER BY x.ord) FROM (VALUES
         (1,'0','Não iniciado',(SELECT COUNT(*) FROM filtered WHERE progress = 0)),
@@ -207,6 +218,20 @@ export async function getDashboardModel(user: CurrentUser, query: DashboardQuery
         WHERE ${filters.module}::int IS NULL OR m.module=${filters.module}
         GROUP BY m.module,s.slot
       ) x) AS encounters,
+      (SELECT COALESCE(json_agg(x ORDER BY x.module), '[]') FROM (
+        SELECT m.module,
+          COUNT(a.student_id) FILTER (WHERE a.status='P') AS present,
+          COUNT(a.student_id) FILTER (WHERE a.status='F') AS absent,
+          COUNT(a.student_id) FILTER (WHERE a.status='NA') AS "notApplicable"
+        FROM generate_series(1,6) m(module) CROSS JOIN filtered f
+        LEFT JOIN attendance a ON a.student_id=f.id AND a.module=m.module
+        WHERE ${filters.module}::int IS NULL OR m.module=${filters.module}
+        GROUP BY m.module
+      ) x) AS participation,
+      (SELECT COALESCE(json_agg(x ORDER BY x.classroom, x.name), '[]') FROM (
+        SELECT id,name,classroom_id AS "classroomId",classroom_name AS classroom,municipality,frequency,progress,final_work_delivered AS "finalWork"
+        FROM filtered
+      ) x) AS scatter,
       (SELECT COALESCE(json_agg(x ORDER BY x.students DESC,x.municipality), '[]') FROM (
         SELECT COALESCE(municipality,'Não informado') AS municipality, COUNT(*) AS students, AVG(frequency) AS "averageFrequency", AVG(progress) AS progress
         FROM filtered GROUP BY COALESCE(municipality,'Não informado')
@@ -218,7 +243,7 @@ export async function getDashboardModel(user: CurrentUser, query: DashboardQuery
         (4,'Acompanhamento completo',(SELECT COUNT(*) FROM filtered WHERE progress=1)),
         (5,'Trabalho final entregue',(SELECT COUNT(*) FROM filtered WHERE final_work_delivered=TRUE)),
         (6,'Aptos à certificação',(SELECT COUNT(*) FROM filtered WHERE effective_status='READY_FOR_CERTIFICATION'))
-      ) x(ord,label,count)) AS funnel,
+      ) x(ord,label,count)) AS milestones,
       (SELECT COALESCE(json_agg(x ORDER BY x.progress, x.frequency NULLS FIRST, x.name), '[]') FROM (
         SELECT id,name,classroom_id AS "classroomId",classroom_name AS classroom,municipality,frequency,progress,final_work_delivered AS "finalWork",effective_status AS status,reason
         FROM attention WHERE reason<>'' LIMIT 100
@@ -238,8 +263,10 @@ export async function getDashboardModel(user: CurrentUser, query: DashboardQuery
     finalWork: { delivered:Number(finalWork.delivered??0),notDelivered:Number(finalWork.notDelivered??0),pending:Number(finalWork.pending??0) },
     finalStatuses: asArray<Record<string, unknown>>(row?.final_statuses).map((item) => ({ status:item.status as FinalStatus,count:Number(item.count) })),
     encounters: asArray<Record<string, unknown>>(row?.encounters).map((item) => ({ module:Number(item.module),slot:Number(item.slot),frequency:numberOrNull(item.frequency) })),
+    participation: asArray<Record<string, unknown>>(row?.participation).map((item) => ({ module:Number(item.module),present:Number(item.present),absent:Number(item.absent),notApplicable:Number(item.notApplicable) })),
+    scatter: asArray<Record<string, unknown>>(row?.scatter).map((item) => ({ id:String(item.id),name:String(item.name),classroomId:String(item.classroomId),classroom:String(item.classroom),municipality:item.municipality==null?null:String(item.municipality),frequency:numberOrNull(item.frequency),progress:Number(item.progress),finalWork:item.finalWork==null?null:Boolean(item.finalWork) })),
     municipalities: asArray<Record<string, unknown>>(row?.municipalities).map((item) => ({ municipality:String(item.municipality),students:Number(item.students),averageFrequency:numberOrNull(item.averageFrequency),progress:Number(item.progress) })),
-    funnel: asArray<Record<string, unknown>>(row?.funnel).map((item) => ({ label:String(item.label),count:Number(item.count) })),
+    milestones: asArray<Record<string, unknown>>(row?.milestones).map((item) => ({ label:String(item.label),count:Number(item.count) })),
     attention: asArray<Record<string, unknown>>(row?.attention).map((item) => ({ id:String(item.id),name:String(item.name),classroomId:String(item.classroomId),classroom:String(item.classroom),municipality:item.municipality==null?null:String(item.municipality),frequency:numberOrNull(item.frequency),progress:Number(item.progress),finalWork:item.finalWork==null?null:Boolean(item.finalWork),status:item.status as FinalStatus,reason:String(item.reason) }))
   };
   return { filters, states, classroomOptions, municipalityOptions: asArray<string>(row?.municipality_options), data, canSelectState };

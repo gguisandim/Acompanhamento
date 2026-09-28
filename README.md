@@ -13,8 +13,12 @@ Aplicação inicial para centralizar as planilhas de acompanhamento de cursistas
 - Progresso = registros `P`, `F` ou `N/A` preenchidos / registros esperados. Vazio não conta.
 - Frequência mínima: 75%.
 - Trabalho final: `Entregou`, `Não entregou` ou `Pendente`.
-- A situação final sugerida considera progresso completo, frequência geral e trabalho final; a confirmação humana pode prevalecer.
-- Cursistas são importados previamente; professor não cria/remover cursistas.
+- A situação final sugerida considera progresso completo, frequência geral e trabalho final; a confirmação humana pode prevalecer. Quando divergir da sugestão, a revisão exige justificativa.
+- Cursistas são importados previamente; professor não cria/remove cursistas.
+- Não existe aprovação/reprovação por módulo.
+- O trabalho final é editado apenas no Resultado Final.
+- Presenças usam salvamento incremental: somente células alteradas são enviadas.
+- Revisões finais ficam sinalizadas quando presença ou trabalho final mudam depois da confirmação.
 
 ## Perfis
 
@@ -100,6 +104,16 @@ npm run test:smoke
 ```
 
 Acesse `http://localhost:3000`.
+
+### Migração após esta versão
+
+Em um banco já existente, rode:
+
+```bash
+npm run db:migrate
+```
+
+A migração `003_final_review_justification.sql` adiciona apenas o campo de justificativa da revisão final e não apaga dados.
 
 ### Dados de demonstração
 

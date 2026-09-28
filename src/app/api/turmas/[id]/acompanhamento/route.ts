@@ -1,25 +1,17 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getCurrentUser } from "@/lib/auth";
 import { canEditClass } from "@/lib/access";
+import { getCurrentUser } from "@/lib/auth";
 import { getClassroom } from "@/lib/data";
 import { db } from "@/lib/db";
 
 const BodySchema = z.object({
-  changes: z.array(
-    z.object({
-      studentId: z.string().uuid(),
-      module: z.number().int().min(1).max(6),
-      slot: z.number().int().min(1).max(6),
-      status: z.enum(["P", "F", "NA"]).nullable()
-    })
-  ).max(2000),
-  finalWork: z.array(
-    z.object({
-      studentId: z.string().uuid(),
-      delivered: z.boolean().nullable()
-    })
-  ).max(100)
+  changes: z.array(z.object({
+    studentId: z.string().uuid(),
+    module: z.number().int().min(1).max(6),
+    slot: z.number().int().min(1).max(6),
+    status: z.enum(["P", "F", "NA"]).nullable()
+  })).max(1080)
 });
 
 export async function POST(
@@ -41,26 +33,26 @@ export async function POST(
     return NextResponse.json({ error: "Dados de acompanhamento inválidos." }, { status: 400 });
   }
 
-  const studentIds = Array.from(
-    new Set([
-      ...parsed.data.changes.map((item) => item.studentId),
-      ...parsed.data.finalWork.map((item) => item.studentId)
-    ])
-  );
+  const uniqueChanges = new Map<string, (typeof parsed.data.changes)[number]>();
+  for (const item of parsed.data.changes) {
+    uniqueChanges.set(`${item.studentId}:${item.module}:${item.slot}`, item);
+  }
+  const changes = Array.from(uniqueChanges.values());
 
+  if (!changes.length) return NextResponse.json({ ok: true, changed: 0 });
+
+  const studentIds = Array.from(new Set(changes.map((item) => item.studentId)));
   const sql = db();
-  if (studentIds.length) {
-    const validStudents = await sql`
-      SELECT id FROM students
-      WHERE classroom_id = ${id} AND id IN ${sql(studentIds)}
-    `;
-    if (validStudents.length !== studentIds.length) {
-      return NextResponse.json({ error: "Há cursistas que não pertencem à turma." }, { status: 400 });
-    }
+  const validStudents = await sql`
+    SELECT id FROM students
+    WHERE classroom_id = ${id} AND id IN ${sql(studentIds)}
+  `;
+  if (validStudents.length !== studentIds.length) {
+    return NextResponse.json({ error: "Há cursistas que não pertencem à turma." }, { status: 400 });
   }
 
   await sql.begin(async (tx) => {
-    const toUpsert = parsed.data.changes
+    const toUpsert = changes
       .filter((item) => item.status !== null)
       .map((item) => ({
         student_id: item.studentId,
@@ -69,7 +61,13 @@ export async function POST(
         status: item.status
       }));
 
-    const toDelete = parsed.data.changes.filter((item) => item.status === null);
+    const toDelete = changes
+      .filter((item) => item.status === null)
+      .map((item) => ({
+        student_id: item.studentId,
+        module: item.module,
+        slot: item.slot
+      }));
 
     if (toUpsert.length) {
       await tx`
@@ -79,26 +77,18 @@ export async function POST(
       `;
     }
 
-    for (const item of toDelete) {
+    if (toDelete.length) {
+      const deleteJson = JSON.stringify(toDelete);
       await tx`
-        DELETE FROM attendance
-        WHERE student_id = ${item.studentId}
-          AND module = ${item.module}
-          AND slot = ${item.slot}
-      `;
-    }
-
-    for (const item of parsed.data.finalWork) {
-      await tx`
-        UPDATE students
-        SET final_work_delivered = ${item.delivered},
-            final_work_updated_at = NOW(),
-            final_work_updated_by = ${user.id},
-            updated_at = NOW()
-        WHERE id = ${item.studentId} AND classroom_id = ${id}
+        DELETE FROM attendance a
+        USING jsonb_to_recordset(${deleteJson}::jsonb)
+          AS d(student_id uuid, module int, slot int)
+        WHERE a.student_id = d.student_id
+          AND a.module = d.module
+          AND a.slot = d.slot
       `;
     }
   });
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, changed: changes.length });
 }

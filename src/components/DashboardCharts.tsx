@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import type { DashboardData } from "@/lib/dashboard";
 import { FINAL_STATUS_LABELS } from "@/lib/types";
 
@@ -29,7 +30,7 @@ function Heatmap({ data }: { data: DashboardData }) {
   if (!data.heatmap.length) return <div className="chart-empty">Ainda não há acompanhamento para compor a matriz.</div>;
   return <>
     <div className="chart-toggle"><button className={mode === "frequency" ? "active" : ""} onClick={() => setMode("frequency")}>Frequência</button><button className={mode === "progress" ? "active" : ""} onClick={() => setMode("progress")}>Progresso</button></div>
-    <div className="heatmap"><div /><>{modules.map((module) => <strong key={module}>M{module}</strong>)}</>
+    <div className="heatmap"><div />{modules.map((module) => <strong key={module}>M{module}</strong>)}
       {classes.flatMap(([id, name]) => {
         const label = <span className="heatmap-label" key={`${id}-label`}>{name}</span>;
         const cells = modules.map((module) => {
@@ -55,21 +56,80 @@ function EncounterHeatmap({ data }: { data: DashboardData }) {
   </div>;
 }
 
+function ParticipationChart({ data }: { data: DashboardData }) {
+  if (!data.participation.length) return <div className="chart-empty">Sem registros de presença neste recorte.</div>;
+  return <div className="stacked-list">
+    <div className="stacked-legend"><span><i className="legend-p" />P</span><span><i className="legend-f" />F</span><span><i className="legend-na" />N/A</span></div>
+    {data.participation.map((item) => {
+      const total = item.present + item.absent + item.notApplicable;
+      const p = total ? item.present / total * 100 : 0;
+      const f = total ? item.absent / total * 100 : 0;
+      const na = total ? item.notApplicable / total * 100 : 0;
+      return <div className="stacked-row" key={item.module}>
+        <span>Módulo {item.module}</span>
+        <div className="stacked-track" title={`P: ${item.present} · F: ${item.absent} · N/A: ${item.notApplicable}`}>
+          <i className="segment-p" style={{ width: `${p}%` }} /><i className="segment-f" style={{ width: `${f}%` }} /><i className="segment-na" style={{ width: `${na}%` }} />
+        </div>
+        <strong>{total}</strong>
+      </div>;
+    })}
+  </div>;
+}
+
+function FrequencyProgressScatter({ data }: { data: DashboardData }) {
+  const points = data.scatter.filter((item) => item.frequency !== null);
+  if (!points.length) return <div className="chart-empty">Ainda não há cursistas com frequência calculável neste recorte.</div>;
+  return <div className="scatter-wrap">
+    <div className="scatter-y-label">Frequência</div>
+    <div className="scatter-plot" aria-label="Relação entre progresso e frequência">
+      <span className="scatter-threshold" style={{ bottom: "75%" }}><em>75%</em></span>
+      {points.map((item) => (
+        <Link
+          key={item.id}
+          href={`/turmas/${item.classroomId}/cursistas/${item.id}`}
+          className="scatter-point"
+          style={{ left: `${Math.max(1, Math.min(99, item.progress * 100))}%`, bottom: `${Math.max(1, Math.min(99, (item.frequency ?? 0) * 100))}%` }}
+          title={`${item.name} · ${item.classroom}\nFrequência: ${percent(item.frequency)}\nProgresso: ${percent(item.progress)}\n${item.municipality || "Município não informado"}`}
+          aria-label={`${item.name}: frequência ${percent(item.frequency)}, progresso ${percent(item.progress)}`}
+        />
+      ))}
+    </div>
+    <div className="scatter-x-label">Progresso →</div>
+  </div>;
+}
+
+function SectionTitle({ eyebrow, title, text }: { eyebrow: string; title: string; text: string }) {
+  return <div className="analytics-section-title"><span>{eyebrow}</span><h2>{title}</h2><p>{text}</p></div>;
+}
+
 export default function DashboardCharts({ data }: { data: DashboardData }) {
-  return <section className="charts-grid dashboard-charts" id="resultados">
-    <article className="chart-card"><div className="chart-heading"><h2>Frequência média por turma</h2><p>P ÷ (P + F), sem transformar módulo em aprovação</p></div><BarList items={data.classrooms.map((item) => ({ label:item.name,value:item.averageFrequency }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Progresso por turma</h2><p>Registros P, F ou N/A preenchidos</p></div><BarList tone="blue" items={data.classrooms.map((item) => ({ label:item.name,value:item.progress }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Frequência por módulo</h2><p>“—” significa ausência de P/F válidos</p></div><BarList items={data.modules.map((item) => ({ label:`Módulo ${item.module}`,value:item.averageFrequency }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Progresso por módulo</h2><p>Preenchimento dos seis encontros esperados</p></div><BarList tone="blue" items={data.modules.map((item) => ({ label:`Módulo ${item.module}`,value:item.progress }))} /></article>
-    <article className="chart-card chart-full"><div className="chart-heading"><h2>Turma × módulo</h2><p>Alterne entre participação e preenchimento</p></div><Heatmap data={data} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Distribuição de frequência</h2><p>Cursistas por faixa</p></div><BarList mode="count" items={data.frequencyDistribution.map((item) => ({ label:item.label,value:item.count }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Distribuição de progresso</h2><p>Nível de preenchimento</p></div><BarList mode="count" tone="blue" items={data.progressDistribution.map((item) => ({ label:item.label,value:item.count }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Trabalho final</h2><p>Pendente é diferente de “não entregou”</p></div><BarList mode="count" tone="blue" items={[{label:"Entregou",value:data.finalWork.delivered},{label:"Não entregou",value:data.finalWork.notDelivered},{label:"Pendente",value:data.finalWork.pending}]} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Situação final</h2><p>Situação manual, quando definida, prevalece</p></div><BarList mode="count" items={data.finalStatuses.map((item) => ({ label:FINAL_STATUS_LABELS[item.status],value:item.count }))} /></article>
-    <article className="chart-card chart-full"><div className="chart-heading"><h2>Encontros / presenças</h2><p>Ajuda a localizar encontros com participação atipicamente baixa</p></div><EncounterHeatmap data={data} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Cursistas por município</h2><p>Distribuição territorial do recorte</p></div><BarList mode="count" tone="blue" items={data.municipalities.map((item) => ({ label:item.municipality,value:item.students }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Frequência por município</h2><p>Média individual em cada município</p></div><BarList items={data.municipalities.map((item) => ({ label:item.municipality,value:item.averageFrequency }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Progresso por município</h2><p>Preenchimento médio</p></div><BarList tone="blue" items={data.municipalities.map((item) => ({ label:item.municipality,value:item.progress }))} /></article>
-    <article className="chart-card"><div className="chart-heading"><h2>Andamento do curso</h2><p>Etapas acumuladas do acompanhamento</p></div><div className="funnel-list">{data.funnel.map((item,index) => <div key={item.label}><span>{item.label}</span><strong>{item.count}</strong>{index < data.funnel.length-1 ? <i>↓</i> : null}</div>)}</div></article>
-  </section>;
+  return <div className="dashboard-analytics" id="resultados">
+    <SectionTitle eyebrow="Participação" title="Presença e frequência" text="Como os cursistas estão participando dos módulos e encontros." />
+    <section className="charts-grid dashboard-charts">
+      <article className="chart-card"><div className="chart-heading"><h2>Frequência média por turma</h2><p>P ÷ (P + F), sem transformar módulo em aprovação</p></div><BarList items={data.classrooms.map((item) => ({ label:item.name,value:item.averageFrequency }))} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Frequência por módulo</h2><p>“—” significa ausência de P/F válidos</p></div><BarList items={data.modules.map((item) => ({ label:`Módulo ${item.module}`,value:item.averageFrequency }))} /></article>
+      <article className="chart-card chart-full"><div className="chart-heading"><h2>Composição P / F / N/A por módulo</h2><p>Mostra a composição dos registros preenchidos, sem confundir N/A com falta.</p></div><ParticipationChart data={data} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Distribuição de frequência</h2><p>Inclui cursistas sem P/F válido como “Sem dados”.</p></div><BarList mode="count" items={data.frequencyDistribution.map((item) => ({ label:item.label,value:item.count }))} /></article>
+      <article className="chart-card chart-full"><div className="chart-heading"><h2>Encontros / presenças</h2><p>Ajuda a localizar encontros com participação atipicamente baixa</p></div><EncounterHeatmap data={data} /></article>
+    </section>
+
+    <SectionTitle eyebrow="Progresso" title="Preenchimento e andamento" text="Quanto do acompanhamento já foi registrado e onde existem lacunas." />
+    <section className="charts-grid dashboard-charts">
+      <article className="chart-card"><div className="chart-heading"><h2>Progresso por turma</h2><p>Registros P, F ou N/A preenchidos</p></div><BarList tone="blue" items={data.classrooms.map((item) => ({ label:item.name,value:item.progress }))} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Progresso por módulo</h2><p>Preenchimento dos seis encontros esperados</p></div><BarList tone="blue" items={data.modules.map((item) => ({ label:`Módulo ${item.module}`,value:item.progress }))} /></article>
+      <article className="chart-card chart-full"><div className="chart-heading"><h2>Turma × módulo</h2><p>Alterne entre participação e preenchimento</p></div><Heatmap data={data} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Distribuição de progresso</h2><p>Nível de preenchimento</p></div><BarList mode="count" tone="blue" items={data.progressDistribution.map((item) => ({ label:item.label,value:item.count }))} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Marcos do curso</h2><p>Indicadores de andamento; não representam um funil obrigatório.</p></div><div className="milestones-list">{data.milestones.map((item) => <div key={item.label}><span>{item.label}</span><strong>{item.count}</strong></div>)}</div></article>
+      <article className="chart-card chart-full"><div className="chart-heading"><h2>Frequência × progresso</h2><p>Cada ponto é um cursista. Clique para abrir a visão individual.</p></div><FrequencyProgressScatter data={data} /></article>
+    </section>
+
+    <SectionTitle eyebrow="Território e encerramento" title="Municípios e situação final" text="Distribuição territorial e pendências do encerramento do curso." />
+    <section className="charts-grid dashboard-charts">
+      <article className="chart-card"><div className="chart-heading"><h2>Cursistas por município</h2><p>Distribuição territorial do recorte</p></div><BarList mode="count" tone="blue" items={data.municipalities.map((item) => ({ label:item.municipality,value:item.students }))} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Frequência por município</h2><p>Média individual em cada município</p></div><BarList items={data.municipalities.map((item) => ({ label:item.municipality,value:item.averageFrequency }))} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Progresso por município</h2><p>Preenchimento médio</p></div><BarList tone="blue" items={data.municipalities.map((item) => ({ label:item.municipality,value:item.progress }))} /></article>
+      <article className="chart-card"><div className="chart-heading"><h2>Trabalho final</h2><p>Pendente é diferente de “não entregou”</p></div><BarList mode="count" tone="blue" items={[{label:"Entregou",value:data.finalWork.delivered},{label:"Não entregou",value:data.finalWork.notDelivered},{label:"Pendente",value:data.finalWork.pending}]} /></article>
+      <article className="chart-card chart-full"><div className="chart-heading"><h2>Situação final</h2><p>Situação manual, quando definida, prevalece; revisões desatualizadas aparecem na lista de atenção.</p></div><BarList mode="count" items={data.finalStatuses.map((item) => ({ label:FINAL_STATUS_LABELS[item.status],value:item.count }))} /></article>
+    </section>
+  </div>;
 }

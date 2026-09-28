@@ -2,93 +2,80 @@
 
 ## Escopo territorial
 
-A aplicação nasce com 7 estados da Região Norte:
-
-- Acre (AC)
-- Amapá (AP)
-- Amazonas (AM)
-- Pará (PA)
-- Rondônia (RO)
-- Roraima (RR)
-- Tocantins (TO)
-
-Cada estado possui 6 turmas, totalizando 42.
+A aplicação atende os sete estados da Região Norte (AC, AP, AM, PA, RO, RR e TO), com seis turmas por estado. O Pará é usado como primeiro recorte de validação, mas o código e o banco continuam genéricos por estado e turma.
 
 ## Matriz de acesso
 
 | Papel | Visualização | Edição de acompanhamento | Importação | Usuários |
 | --- | --- | --- | --- | --- |
-| PROFESSOR | 6 turmas do próprio estado | somente a turma atribuída | não | não |
+| PROFESSOR | turmas do próprio estado | somente a turma atribuída | não | não |
 | COORDENADOR_ESTADUAL | 6 turmas do próprio estado | todas as 6 | sim | não |
 | COORDENADOR_GERAL | todos os estados | todas as turmas | sim | não |
 | ADMIN | todos os estados | todas as turmas | sim | sim |
 
-O escopo é persistido separadamente do papel:
+A autorização é validada no backend. `state_id` define o escopo estadual e `classroom_id` define a turma editável pelo professor.
 
-- `state_id`: limita Professor/Coordenador Estadual ao estado.
-- `classroom_id`: identifica qual turma o Professor pode editar.
-- Coordenador Geral e Admin não precisam de escopo estadual.
-
-## Modelo de dados
+## Modelo principal
 
 ```text
 states
-  └── classrooms (6 por estado)
-       └── students (até 30 posições importadas por turma)
-            └── attendance (6 módulos x 6 presenças)
-       └── users PROFESSOR (uma turma atribuída)
+  └── classrooms
+       ├── students
+       │    └── attendance (6 módulos × 6 encontros)
+       └── users PROFESSOR
 
-users
-  ├── role
-  ├── state_id
-  └── classroom_id
+students
+  ├── final_work_delivered
+  ├── final_status
+  ├── final_observations
+  ├── final_review_justification
+  ├── final_work_updated_at / updated_by
+  └── final_review_updated_at / updated_by
 ```
 
-O trabalho final é armazenado no cursista (`final_work_delivered`), pois existe um resultado final por cursista no curso 2026.
+## Regras de acompanhamento
 
-## Regras pedagógicas implementadas
-
-- `P`: presença.
+- `P`: presente.
 - `F`: falta.
 - `N/A`: não se aplica.
 - vazio: ainda não preenchido.
-- frequência: `P / (P + F)`.
-- `N/A` e vazio não entram no denominador.
-- mínimo de frequência: 75%.
-- certificação: frequência geral >= 75% **e** trabalho final entregue.
-- resultado de módulo mostrado no consolidado: frequência do módulo >= 75%.
+- Frequência = `P / (P + F)`.
+- `N/A` e vazio não entram no denominador da frequência.
+- Progresso = quantidade de registros `P`, `F` ou `N/A` / quantidade esperada.
+- `N/A` conta como campo preenchido para progresso.
+- Não existe aprovação ou reprovação por módulo.
+- Os módulos servem exclusivamente para acompanhar presença, frequência e preenchimento.
 
-## Migração da planilha
+## Trabalho final e situação final
 
-A aba `1 - Acompanhamento` é mapeada assim:
+O trabalho final pertence ao encerramento do curso e aceita três estados: entregue (`true`), não entregue (`false`) e pendente (`null`). Ele não é editado nas telas de módulo.
 
-```text
-B8:B37   -> cursista
-C8:C37   -> município
-D8:AM37  -> presença (36 campos = 6 módulos x 6)
-AN8:AN37 -> trabalho final
-```
+A aplicação calcula uma situação final sugerida com base no conjunto do curso. A situação manual, quando confirmada por um responsável autorizado, prevalece sobre a sugestão. Se a decisão manual divergir da sugestão, deve existir uma justificativa.
 
-A frequência e a situação são recalculadas pelo sistema; não são confiadas cegamente ao valor calculado no arquivo.
+Uma revisão final confirmada é marcada como desatualizada quando uma presença ou o trabalho final do cursista é alterado depois de `final_review_updated_at`. A decisão manual não é apagada automaticamente; a interface apenas sinaliza que precisa ser revista.
 
-## Escolha de interface
+## Salvamento de presença
 
-A tela de preenchimento mostra um módulo por vez:
+O editor mantém dirty tracking no cliente. Apenas células realmente alteradas são enviadas à API. O backend faz UPSERT em lote para registros preenchidos e DELETE em lote para células que foram explicitamente limpas. Isso reduz tráfego, queries e risco de sobrescrever alterações concorrentes que o usuário não tocou.
 
-```text
-Cursista | Município | Presença 1 | ... | Presença 6 | Freq. módulo | Freq. geral | Trabalho final
-```
+A ação em massa padrão é `Preencher vazios com P`: ela nunca sobrescreve `F` ou `N/A` existentes.
 
-Isso evita reproduzir 42 colunas simultâneas do Excel e mantém o preenchimento utilizável em notebook.
+## Dashboard
 
-## Evoluções previstas sem mudança de banco principal
+O painel separa três eixos conceituais:
 
-- auditoria de quem alterou cada presença;
-- redefinição de senha;
-- ativar/desativar usuários;
-- importação em lote;
-- gráficos estaduais;
-- exportação geral;
-- PDF consolidado;
-- observações por turma;
-- bloqueio de edição após fechamento do curso.
+1. Participação: frequência, composição `P/F/N/A` e encontros.
+2. Progresso: preenchimento por turma/módulo, heatmaps e relação frequência × progresso.
+3. Território e encerramento: município, trabalho final e situação final.
+
+A distribuição de frequência possui a categoria `Sem dados`, em vez de transformar ausência de `P/F` em 0%.
+
+A seção `Marcos do curso` apresenta indicadores de andamento, sem assumir que todos formam um funil matemático obrigatório.
+
+## Importação
+
+A importação é conservadora: cursistas existentes são conciliados e atualizados sem apagar acompanhamento. Cursistas ausentes no novo arquivo não são excluídos automaticamente e células vazias no Excel não removem presenças já registradas.
+
+## Exportação
+
+A exportação usa o template oficial em `assets/` e mantém as duas abas. Como não existe aprovação por módulo, o consolidado por módulo usa frequência e progresso, preservando a compatibilidade conceitual com o acompanhamento atual.
